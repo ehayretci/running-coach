@@ -1,9 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0e1013"/>
-  <g transform="translate(256 256) skewX(-14) translate(-256 -256)" stroke-linecap="round" fill="none">
-    <!-- the E: stem + three bars -->
-    <path d="M222 150 V362 M222 150 H352 M222 256 H326 M222 362 H352" stroke="#c8f031" stroke-width="44" stroke-linejoin="round"/>
-    <!-- speed lines trailing behind -->
-    <path d="M110 150 H160 M86 256 H160 M110 362 H160" stroke="#c8f031" stroke-width="22" opacity="0.55"/>
-  </g>
+  <rect width="512" height="512" rx="112" fill="#8fd3ff"/>
+  <path d="M184 262 H328 A72 72 0 1 0 307 313" fill="none" stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
