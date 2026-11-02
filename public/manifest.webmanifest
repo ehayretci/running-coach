@@ -3,8 +3,8 @@
   "short_name": "Efecan",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#4fa8e8",
-  "theme_color": "#4fa8e8",
+  "background_color": "#0e1013",
+  "theme_color": "#0e1013",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
