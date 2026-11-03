@@ -1,43 +1,60 @@
 export type SessionType =
-  | 'easy' | 'long' | 'intervals' | 'tempo' | 'goalpace'
-  | 'timetrial' | 'race' | 'rest' | 'shakeout'
+  | 'easy' | 'recovery' | 'long' | 'intervals' | 'tempo' | 'goalpace'
+  | 'timetrial' | 'race' | 'rest' | 'shakeout' | 'cross'
 
-export type PaceKey = 'easy' | 'threshold' | 'interval' | 'goal' | 'race'
+export type ShoeId = 'vomero' | 'vaporfly' | 'cloudmonster' | 'none'
 
-export interface Workout {
-  wuKm: number
-  cdKm: number
-  reps: number
-  repM?: number // rep distance in metres
-  repMin?: number // or rep duration in minutes
-  recovery?: string
-}
-
-export type SessionStatus = 'planned' | 'done' | 'missed' | 'skipped'
-
-export interface Session {
+export interface PlannedSession {
   id: string
   date: string // YYYY-MM-DD
   type: SessionType
   title: string
-  description: string // free text notes (user editable)
   distanceKm: number
-  paceKey?: PaceKey
-  workout?: Workout
-  strides?: number
-  /** Target pace for the main work of the session, sec/km */
-  targetPace?: number
-  /** For easy/long runs: [fast, slow] sec/km */
-  paceRange?: [number, number]
-  status: SessionStatus
-  runId?: string
-  note?: string // coach note (e.g. why it was adjusted)
+  /** Step-by-step workout, e.g. "2 km warm-up · 5 × 1 km @ 3:58 (90 s jog) · 1.5 km cool-down" */
+  details: string
+  /** Main-set pace window, sec/km (0 = not applicable) */
+  paceMin: number
+  paceMax: number
+  /** Heart-rate window for the main set, bpm (0 = not applicable) */
+  hrMin: number
+  hrMax: number
+  shoe: ShoeId
+  /** Why this session, why this shoe */
+  why: string
+  /** Warm-up, fuelling, form cues, surface, etc. */
+  tips: string[]
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  text: string
+  at: number
+}
+
+export interface WeekPlan {
+  weekStart: string // Monday
+  notes: string
+  runDays: number[]
+  summary: string
+  sessions: PlannedSession[]
+  chat: ChatMessage[]
+  source: 'ai' | 'rules'
+  generatedAt: number
 }
 
 export interface Lap {
   distanceM: number
   movingTimeS: number
   avgHr?: number
+  maxHr?: number
+  cadence?: number
+}
+
+export interface Split {
+  distanceM: number
+  movingTimeS: number
+  avgHr?: number
+  elevDiff?: number
 }
 
 export interface Run {
@@ -53,42 +70,31 @@ export interface Run {
   maxHr?: number
   elevGainM?: number
   cadence?: number
+  sufferScore?: number
+  calories?: number
+  gearId?: string
   laps?: Lap[]
+  splits?: Split[]
   /** Strava best efforts, name -> seconds (e.g. '5K': 1230) */
   bestEfforts?: Record<string, number>
   detailFetched?: boolean
-  rpe?: number
-  notes?: string
 }
 
-export interface Milestone {
+export interface RunAnalysis {
+  runId: string
+  verdict: 'nailed' | 'good' | 'off-target' | 'unplanned'
+  headline: string
+  vsTarget: string
+  heartRate: string
+  analysis: string
+  nextTime: string[]
+  generatedAt: number
+}
+
+export interface StravaShoe {
   id: string
-  title: string
-  targetDate: string
-  done: boolean
-  doneDate?: string
-  /** Auto-complete when a best effort of this name beats `underS` */
-  auto?: { effort: string; distanceM: number; underS: number }
-}
-
-export interface Goal {
-  id: string
-  title: string
-  description: string
-  targetDate: string
-  achieved: boolean
-  milestones: Milestone[]
-}
-
-export interface Profile {
   name: string
-  current5kS: number
-  weeklyKm: number
-  runDays: number[] // 0 = Mon ... 6 = Sun
-  longRunDay: number
-  raceDate: string
-  goal5kS: number
-  maxHr?: number
+  distanceKm: number
 }
 
 export interface StravaState {
@@ -97,23 +103,18 @@ export interface StravaState {
   accessToken?: string
   refreshToken?: string
   expiresAt?: number
-  athlete?: { id: number; firstname: string; lastname: string; profile?: string }
+  scope?: string
+  athlete?: { id: number; firstname: string; lastname: string }
+  shoes?: StravaShoe[]
   lastSync?: number // epoch seconds
 }
 
-export interface CoachLogEntry {
-  date: string
-  message: string
-}
-
 export interface AppState {
-  version: 1
-  profile?: Profile
-  sessions: Session[]
+  version: 2
   runs: Run[]
-  goals: Goal[]
+  weeks: Record<string, WeekPlan>
+  analyses: Record<string, RunAnalysis>
   strava: StravaState
-  planVdot?: number
-  coachLog: CoachLogEntry[]
-  dismissed: string[] // dismissed recommendation keys
+  anthropicKey: string
+  prefs: { runDays: number[]; maxHr?: number }
 }

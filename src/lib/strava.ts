@@ -1,4 +1,5 @@
-import type { Run, StravaState } from './types'
+import type { Run, StravaShoe, StravaState } from './types'
+import { CHALLENGE_START } from './challenge'
 
 const AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -14,7 +15,7 @@ export function authorizeUrl(clientId: string): string {
     response_type: 'code',
     redirect_uri: redirectUri(),
     approval_prompt: 'auto',
-    scope: 'read,activity:read_all',
+    scope: 'read,activity:read_all,profile:read_all',
   })
   return `${AUTH_URL}?${q}`
 }
@@ -36,11 +37,11 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
   return res.json()
 }
 
-export async function exchangeCode(s: StravaState, code: string): Promise<StravaState> {
+export async function exchangeCode(s: StravaState, code: string, scope?: string): Promise<StravaState> {
   const t = await tokenRequest({
     client_id: s.clientId, client_secret: s.clientSecret, code, grant_type: 'authorization_code',
   })
-  return { ...s, accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: t.expires_at, athlete: t.athlete ?? s.athlete }
+  return { ...s, scope, accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: t.expires_at, athlete: t.athlete ?? s.athlete }
 }
 
 /** Returns a state with a valid (refreshed if needed) access token */
@@ -76,6 +77,8 @@ function mapSummary(a: any): Run {
     maxHr: a.max_heartrate,
     elevGainM: a.total_elevation_gain,
     cadence: a.average_cadence ? a.average_cadence * 2 : undefined,
+    sufferScore: a.suffer_score ?? undefined,
+    gearId: a.gear_id ?? undefined,
   }
 }
 
@@ -84,7 +87,9 @@ function mapDetail(base: Run, a: any): Run {
   for (const e of a.best_efforts ?? []) bestEfforts[e.name] = e.elapsed_time
   return {
     ...base,
-    laps: (a.laps ?? []).map((l: any) => ({ distanceM: l.distance, movingTimeS: l.moving_time, avgHr: l.average_heartrate })),
+    laps: (a.laps ?? []).map((l: any) => ({ distanceM: l.distance, movingTimeS: l.moving_time, avgHr: l.average_heartrate, maxHr: l.max_heartrate, cadence: l.average_cadence ? l.average_cadence * 2 : undefined })),
+    splits: (a.splits_metric ?? []).map((l: any) => ({ distanceM: l.distance, movingTimeS: l.moving_time, avgHr: l.average_heartrate, elevDiff: l.elevation_difference })),
+    calories: a.calories ?? undefined,
     bestEfforts,
     detailFetched: true,
   }
@@ -103,7 +108,8 @@ export interface SyncResult {
  */
 export async function syncRuns(state: StravaState, existing: Run[], onProgress?: (msg: string) => void): Promise<SyncResult> {
   let s = await ensureToken(state)
-  const after = s.lastSync ? s.lastSync - 3 * 86400 : Math.floor(Date.now() / 1000) - 56 * 86400
+  // First sync: 4 weeks before the challenge for training-load context
+  const after = s.lastSync ? s.lastSync - 3 * 86400 : Math.floor(new Date(CHALLENGE_START + 'T00:00:00').getTime() / 1000) - 28 * 86400
   const byId = new Map(existing.map((r) => [r.id, r]))
   let newCount = 0
 
@@ -116,7 +122,7 @@ export async function syncRuns(state: StravaState, existing: Run[], onProgress?:
       const run = mapSummary(a)
       const prev = byId.get(run.id)
       if (!prev) newCount++
-      byId.set(run.id, { ...prev, ...run, laps: prev?.laps, bestEfforts: prev?.bestEfforts, detailFetched: prev?.detailFetched, rpe: prev?.rpe, notes: prev?.notes })
+      byId.set(run.id, { ...prev, ...run, laps: prev?.laps, splits: prev?.splits, calories: prev?.calories, bestEfforts: prev?.bestEfforts, detailFetched: prev?.detailFetched })
     }
     if (list.length < 100) break
   }
@@ -139,8 +145,20 @@ export async function syncRuns(state: StravaState, existing: Run[], onProgress?:
     }
   }
 
+  // Shoes and their mileage (needs profile:read_all)
+  let shoes = s.shoes
+  try {
+    s = await ensureToken(s)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const athlete = await api<any>(s, '/athlete')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (Array.isArray(athlete.shoes)) shoes = athlete.shoes.map((g: any): StravaShoe => ({ id: g.id, name: g.name, distanceKm: (g.distance ?? 0) / 1000 }))
+  } catch (e) {
+    console.warn('athlete fetch failed', e)
+  }
+
   return {
-    strava: { ...s, lastSync: Math.floor(Date.now() / 1000) },
+    strava: { ...s, shoes, lastSync: Math.floor(Date.now() / 1000) },
     runs: [...byId.values()].sort((a, b) => b.startLocal.localeCompare(a.startLocal)),
     newCount,
   }
