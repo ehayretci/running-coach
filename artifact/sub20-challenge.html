@@ -1,4 +1,4 @@
-<title>Efecan</title>
+<title>Sub 20 Challenge</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -68,7 +68,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
 .top-inner { display: flex; align-items: center; gap: 16px; padding-block: 12px; }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.brand-mark { font-family: var(--font-display); font-weight: 800; font-size: 1.7rem; font-style: italic; color: var(--accent); letter-spacing: 0.02em; line-height: 1; }
+.brand-mark { font-family: var(--font-display); font-weight: 800; font-size: 1.5rem; white-space: nowrap; font-style: italic; color: var(--accent); letter-spacing: 0.02em; line-height: 1; }
 .brand-sub { font-size: 0.8rem; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tabs { display: flex; gap: 2px; margin-left: auto; background: var(--surface-2); padding: 3px; border-radius: 10px; }
 .tabs button { border: 0; background: none; padding: 6px 14px; border-radius: 8px; font-weight: 500; color: var(--fg-2); }
@@ -227,8 +227,8 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 <header class="top">
   <div class="wrap top-inner">
     <div class="brand">
-      <span class="brand-mark">efecan</span>
-      <span class="brand-sub" id="countdown">Road to Sub 20</span>
+      <span class="brand-mark">Sub 20 Challenge</span>
+      <span class="brand-sub" id="countdown"></span>
     </div>
     <nav class="tabs" id="tabs" aria-label="Sections">
       <button type="button" data-view="week">Week</button>
@@ -308,7 +308,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 /* ================= State ================= */
 const S = {
   view: ["week", "calendar", "stats"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
-  runs: [], perf: {}, zones: null, stravaErr: null, stravaLoading: true,
+  runs: [], perf: {}, zones: null, gear: null, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {}, prefs: { runDays: [1, 3, 5, 6] },
   store: null, storeErr: null,
   sample: null, sampleErr: null,
@@ -390,7 +390,7 @@ async function loadStrava(refresh = false) {
     const list = (res.payload && res.payload.activities) || [];
     S.runs = list.filter((a) => RUN_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
     S.stravaLoading = false; render();
-    await loadZones();
+    await Promise.all([loadZones(), loadGear()]);
     await loadPerfs();
   } catch (e) {
     S.stravaLoading = false;
@@ -404,6 +404,26 @@ async function loadZones() {
     S.zones = r.payload || null; render();
   } catch (e) { console.warn("zones", e); }
 }
+/** Your shoes from Strava (Settings → My Gear), matched to the three pairs by name */
+async function loadGear() {
+  try {
+    const r = await mcp.callTool(STRAVA, "get_gear", { gear_types: ["Shoe"] }, { cache: { staleTime: 30 * 60e3, gcTime: 6048e5 } });
+    const list = (r.payload && r.payload.gear) || [];
+    S.gear = list.map((g) => ({ id: String(g.gear_id?.id ?? g.id ?? ""), name: [g.brand, g.model_name].filter(Boolean).join(" ") || g.name || "Shoe", nick: g.name || "", km: (num(g.distance) ?? 0) / 1000, retired: !!g.retired, key: shoeKey([g.name, g.brand, g.model_name, g.description].join(" ")) }));
+    render();
+  } catch (e) { console.warn("gear", e); S.gear = S.gear || null; }
+}
+function shoeKey(text) {
+  const t = String(text || "").toLowerCase();
+  if (t.includes("vaporfly")) return "vaporfly";
+  if (t.includes("vomero")) return "vomero";
+  if (t.includes("cloudmonster") || t.includes("monster")) return "cloudmonster";
+  return null;
+}
+const gearFor = (key) => (S.gear || []).find((g) => g.key === key && !g.retired);
+const gearById = (id) => (S.gear || []).find((g) => g.id === String(id));
+/** km run in each shoe since the challenge started, from runs tagged on Strava */
+function shoeKmSince(id, from = START) { return S.runs.filter((r) => r.gear === String(id) && r.date >= from).reduce((a, r) => a + r.km, 0); }
 async function loadPerfs() {
   const need = S.runs.filter((r) => !S.perf[r.id]);
   let i = 0;
@@ -426,7 +446,7 @@ function stravaMsg(e) {
     case "needs_reauth": return "Your Strava connection has expired. Reconnect Strava in claude.ai Settings → Connectors, then reload.";
     case "server_not_connected": return "Strava isn’t connected. Add the Strava connector in claude.ai Settings → Connectors, then reload.";
     case "selection_required": return "You have more than one Strava connector — choose one when claude.ai asks, then reload.";
-    case "not_in_manifest": case "approval_required": return "Efecan needs your permission to read Strava. Tap “Load runs” and allow it.";
+    case "not_in_manifest": case "approval_required": return "Sub 20 Challenge needs your permission to read Strava. Tap “Load runs” and allow it.";
     case "blocked_by_policy": return "Your organisation blocks the Strava connector for this page.";
     case "server_unavailable": case "upstream_error": return "Strava didn’t answer just now. Try again in a minute.";
     case "tool_error": return "Strava reported an error: " + (e.message || "unknown") + ". Strava’s connector needs an active Strava subscription.";
@@ -532,14 +552,14 @@ function validate(sessions, weekStart) {
 }
 
 /* ================= Coach context for Claude ================= */
-const COACH = `You are Efecan, a personal running coach inside an app. Your one athlete (Erim, 65 kg, London) is training for "Road to Sub 20": a 5K under 20:00 on Thursday 10 December 2026.
+const COACH = `You are the coach inside the Sub 20 Challenge app. Your one athlete (Erim, 65 kg, London) is training for "Sub 20 Challenge": a 5K under 20:00 on Thursday 10 December 2026.
 
 Coaching rules:
 - Be strictly data-driven and honest. Never flatter or inflate. If the numbers say the goal is unlikely, say so plainly with the numbers, then still give the best plan to get as close as possible.
 - Paces come from CURRENT fitness in the data, except dedicated goal-pace work (about 4:00/km).
 - Hard days (intervals, tempo, goal pace, time trial) never on back-to-back days; normally 2 hard sessions a week, 3 only if clearly coping; no long run the day before a hard session; volume rises gradually (≤10–15% over recent weeks); at least one rest day; taper over the final 10 days; nothing hard within 2 days of the race.
 - The athlete's runs currently record running POWER but NOT heart rate. Give power targets (watts) from the power data provided, and HR targets from their Strava HR zones as a guide for when they wear a HR strap. Say which to trust on each run.
-- Shoes — choose one per run:
+- Shoes — choose one per run, taking the Strava mileage in the data into account:
   vomero = Nike Vomero Plus, max-cushion daily trainer, ≈1 year old → easy, recovery, most long runs.
   cloudmonster = On Cloudmonster 3 Hyper, brand new → break it in on 2–3 easy/steady runs first, then tempo, longer intervals, long runs with fast finishes.
   vaporfly = Nike Vaporfly 4, carbon racer, ≈1 year old → race day, the time trial, and at most one goal-pace session a week.
@@ -567,6 +587,7 @@ function context(weekStart, asOf = today()) {
   const sp = S.zones?.sample_race_pace;
   if (sp) L.push(`STRAVA'S OWN 5K ESTIMATE: ${sp.time}${sp.is_estimated ? " (estimated by Strava)" : ""}.`);
   if (pw) L.push(`POWER: median ${pw.ratio.toFixed(1)} W per m/s over ${pw.n} runs → goal pace needs ≈${Math.round(pw.goalW)} W.${pw.base5kW ? ` Baseline 5K averaged ${Math.round(pw.base5kW)} W.` : ""}`);
+  L.push("SHOES (from Strava gear):\n" + ["vomero", "cloudmonster", "vaporfly"].map((k) => { const g = gearFor(k); return `- ${k}: ${SHOES[k].name}, ${g ? `${g.km.toFixed(0)} km total on Strava, ${shoeKmSince(g.id).toFixed(0)} km since ${START}` : "not on Strava — mileage unknown"}`; }).join("\n") + "\nZoomX-type racing foam typically loses responsiveness after ~400–500 km; consider this for the Vaporfly.");
   L.push(z ? `HR ZONES (Strava, from max HR): ${z.map((x) => `Z${x.zone} ${x.min}–${x.max ?? "max"}`).join(", ")}. HR is not recorded on recent runs.` : "HR zones: unknown.");
   L.push("RUNS:");
   const recent = S.runs.filter((r) => r.date >= addDays(asOf, -35) && r.date <= asOf);
@@ -579,6 +600,7 @@ function context(weekStart, asOf = today()) {
     if (r.cadence) line += `, ${Math.round(r.cadence)} spm`;
     if (r.elev) line += `, +${Math.round(r.elev)} m`;
     if (r.weather?.temperature != null) line += `, ${Math.round(r.weather.temperature)}°C`;
+    if (r.gear && gearById(r.gear)) line += `, shoe ${gearById(r.gear).name}`;
     if (pf?.best?.Fastest5k) line += `, best 5K ${fmtT(pf.best.Fastest5k)}`;
     if (pf?.best?.Fastest1k) line += `, best 1K ${fmtT(pf.best.Fastest1k)}`;
     if (planned) line += ` | planned: ${planned.title} (${planned.distanceKm} km)`;
@@ -616,7 +638,7 @@ function cleanSessions(list, from, weekStart) {
 function sampleMsg(e) {
   switch (e?.code) {
     case "cancelled": return null;
-    case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed": return "Claude isn’t available to this page. Allow Efecan to use Claude when asked, or open it in claude.ai.";
+    case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed": return "Claude isn’t available to this page. Allow Sub 20 Challenge to use Claude when asked, or open it in claude.ai.";
     case "rate_limited": return "You’ve hit a Claude usage limit. Try again a little later.";
     case "session_expired": return "Your claude.ai session expired. Sign in again and reload.";
     case "invalid_json": return "The coach’s answer came back garbled. Try again.";
@@ -746,7 +768,7 @@ function renderWeek() {
     const pastRuns = S.runs.filter((r) => r.date >= wk && r.date < t);
     const days = S.prefs.runDays || [];
     h += `<section class="gen" aria-labelledby="gen-h">
-      <div><h2 id="gen-h">Plan this week</h2><p class="muted small">Efecan reads your Strava runs from the last 5 weeks plus your notes, then plans every day from today to Sunday.</p></div>
+      <div><h2 id="gen-h">Plan this week</h2><p class="muted small">The coach reads your Strava runs from the last 5 weeks plus your notes, then plans every day from today to Sunday.</p></div>
       <label>Days you can run<div class="daypick" id="daypick">${DAYS.map((d, i) => `<button type="button" data-day="${i}" aria-pressed="${days.includes(i)}">${d}</button>`).join("")}</div></label>
       <label for="notes">Notes for the coach
         <textarea id="notes" rows="4" placeholder="e.g. Legs heavy after Monday's 5K. Busy Thursday evening. Track access Wednesday. Slight tightness in left calf.">${esc(S.draftNotes)}</textarea></label>
@@ -754,7 +776,7 @@ function renderWeek() {
         <button class="btn primary" data-act="generate" ${S.busy || !S.sample || S.stravaLoading ? "disabled" : ""}>Generate plan</button>
         ${!S.sample ? `<span class="muted small">Claude isn’t available in this view.</span>` : S.stravaLoading ? `<span class="muted small">Waiting for Strava…</span>` : ""}
       </div>
-      ${busyLine("generate", "Efecan is building your week — this usually takes 30–90 seconds.")}
+      ${busyLine("generate", "The coach is building your week — this usually takes 30–90 seconds.")}
     </section>`;
     if (pastRuns.length) h += `<section class="days">${pastRuns.map((r) => dayRow(r.date, null)).join("")}</section>`;
     return h;
@@ -768,10 +790,10 @@ function renderWeek() {
   h += `</section>`;
 
   h += `<section class="chat" aria-labelledby="chat-h">
-    <div><h3 id="chat-h">Change the plan</h3><p class="muted small">Tell Efecan what’s changed — it rearranges the week, or explains why not.</p></div>
+    <div><h3 id="chat-h">Change the plan</h3><p class="muted small">Tell the coach what’s changed — it rearranges the week, or explains why not.</p></div>
     <div class="msgs" id="msgs">${(plan.chat || []).map((m) => `<div class="msg ${m.role}">${esc(m.text)}</div>`).join("") || `<p class="muted small">Try: “I can’t run Tuesday this week, can we move it to Wednesday?”</p>`}</div>
-    ${busyLine("chat", "Efecan is thinking…")}
-    <form id="chatform"><textarea id="chatinput" rows="1" placeholder="Message Efecan" ${S.busy || !S.sample ? "disabled" : ""}></textarea><button class="btn primary" type="submit" ${S.busy || !S.sample ? "disabled" : ""}>Send</button></form>
+    ${busyLine("chat", "The coach is thinking…")}
+    <form id="chatform"><textarea id="chatinput" rows="1" placeholder="Message the coach" ${S.busy || !S.sample ? "disabled" : ""}></textarea><button class="btn primary" type="submit" ${S.busy || !S.sample ? "disabled" : ""}>Send</button></form>
   </section>
   <p class="muted small">Plan generated ${esc(new Date(plan.generatedAt).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }))}. <button class="linkish" data-act="regen">Start this week over</button></p>`;
   return h;
@@ -797,7 +819,7 @@ function dayRow(d, s) {
 function renderCalendar() {
   const t = today();
   const cur = monday(t);
-  let h = `<div class="week-head"><div><div class="eyebrow">Road to Sub 20</div><div class="range">2 Nov – 10 Dec</div></div></div>${banners()}
+  let h = `<div class="week-head"><div><div class="eyebrow">Sub 20 Challenge</div><div class="range">2 Nov – 10 Dec</div></div></div>${banners()}
   <div class="legend"><span><i class="sw" style="background:var(--accent)"></i>Run done</span><span><i class="sw" style="border:1px dashed var(--hard)"></i>Planned (this week)</span><span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Race day</span></div>`;
   const start = monday(START), end = addDays(monday(RACE), 6);
   h += `<div class="cal">${DAYS.map((d) => `<div class="dow">${d}</div>`).join("")}`;
@@ -914,14 +936,18 @@ function renderStats() {
       ${z ? z.map((x) => `<dt>HR zone ${x.zone}</dt><dd>${x.min}${x.max ? "–" + x.max : "+"} bpm</dd>`).join("") : ""}
     </dl><p class="small muted">${challengeRuns().some((r) => S.perf[r.id]?.hasHr) ? "Heart rate is being recorded." : "Your recent runs have no heart-rate data, so power is the effort measure. HR targets assume a strap or watch."}</p></section></div>`;
 
+  // shoes
+  const gearKnown = (S.gear || []).filter((g) => !g.retired);
+  h += `<section class="card"><h3>Shoes</h3>${gearKnown.length ? `<div class="tablewrap"><table><thead><tr><th>Shoe</th><th>Use</th><th class="r">Total km</th><th class="r">Since 2 Nov</th></tr></thead><tbody>${gearKnown.map((g) => `<tr><td>${esc(g.name)}${g.nick && g.nick !== g.name ? ` <span class="muted">(${esc(g.nick)})</span>` : ""}</td><td class="muted">${esc(g.key ? SHOES[g.key].role.split(" · ")[0] : "Not one of your three pairs")}</td><td class="r">${g.km.toFixed(0)}${g.key === "vaporfly" && g.km > 400 ? ` <span style="color:var(--warn)">· foam ageing</span>` : ""}</td><td class="r">${shoeKmSince(g.id).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).length ? `<p class="small muted">Not found on Strava: ${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).map((k) => esc(SHOES[k].name)).join(", ")}. Name them with “Vomero”, “Cloudmonster” or “Vaporfly” so they can be matched.</p>` : ""}` : `<p class="small">${S.gear ? "No shoes on your Strava yet." : "Loading shoes from Strava…"}</p><p class="small muted">Add your Vomero Plus, Cloudmonster 3 Hyper and Vaporfly 4 in Strava (Settings → My Gear → Add Shoes, with an estimate of the km already on them), and pick the shoe on each run. The app then tracks mileage and checks the shoe you wore against the plan.</p>`}</section>`;
+
   // runs table
   const rows = challengeRuns().slice().reverse();
   const planned = rows.map((r) => S.weeks[monday(r.date)]?.sessions?.find((s) => s.date === r.date));
   const allPlanned = Object.values(S.weeks).flatMap((w) => w.sessions || []).filter((s) => s.type !== "rest" && s.type !== "cross" && s.date < t);
   const adherence = allPlanned.length ? Math.round((allPlanned.filter((s) => runsOn(s.date).length).length / allPlanned.length) * 100) : null;
   h += `<section class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3>Challenge runs</h3><span class="small muted num">${adherence != null ? `Plan completion ${adherence}%` : ""}</span></div>
-    <div class="tablewrap"><table><thead><tr><th>Date</th><th>Run</th><th class="r">km</th><th class="r">Pace</th><th class="r">Power</th><th class="r">spm</th><th class="r">Best 1K</th></tr></thead><tbody>
-    ${rows.map((r, i) => `<tr data-open="${esc(r.date)}" style="cursor:pointer"><td>${esc(fdate(r.date, { day: "numeric", month: "short" }))}</td><td>${esc(planned[i]?.title || r.name)}</td><td class="r">${r.km.toFixed(2)}</td><td class="r">${fmtT(r.pace)}</td><td class="r">${S.perf[r.id]?.watts ? Math.round(S.perf[r.id].watts) : "–"}</td><td class="r">${r.cadence ? Math.round(r.cadence) : "–"}</td><td class="r">${S.perf[r.id]?.best?.Fastest1k ? fmtT(S.perf[r.id].best.Fastest1k) : "–"}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">No runs yet.</td></tr>`}
+    <div class="tablewrap"><table><thead><tr><th>Date</th><th>Run</th><th class="r">km</th><th class="r">Pace</th><th class="r">Power</th><th class="r">spm</th><th class="r">Best 1K</th><th>Shoe</th></tr></thead><tbody>
+    ${rows.map((r, i) => `<tr data-open="${esc(r.date)}" style="cursor:pointer"><td>${esc(fdate(r.date, { day: "numeric", month: "short" }))}</td><td>${esc(planned[i]?.title || r.name)}</td><td class="r">${r.km.toFixed(2)}</td><td class="r">${fmtT(r.pace)}</td><td class="r">${S.perf[r.id]?.watts ? Math.round(S.perf[r.id].watts) : "–"}</td><td class="r">${r.cadence ? Math.round(r.cadence) : "–"}</td><td class="r">${S.perf[r.id]?.best?.Fastest1k ? fmtT(S.perf[r.id].best.Fastest1k) : "–"}</td><td>${esc(r.gear && gearById(r.gear) ? (gearById(r.gear).key ? SHOES[gearById(r.gear).key].name.replace(/^(Nike|On) /, "") : gearById(r.gear).name) : "–")}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">No runs yet.</td></tr>`}
     </tbody></table></div></section>`;
   return h;
 }
@@ -936,7 +962,7 @@ function renderDrawer() {
   if (s) {
     h += `<section class="card"><div class="row1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(s.type)}<strong>${esc(s.title)}</strong>${s.distanceKm ? `<span class="mono">${esc(s.distanceKm)} km</span>` : ""}</div>
       ${s.details ? `<p>${esc(s.details)}</p>` : ""}${targets(s)}${s.why ? `<p class="muted small">${esc(s.why)}</p>` : ""}
-      ${s.shoe && s.shoe !== "none" ? `<div class="shoe"><span class="glyph">${esc(SHOES[s.shoe].glyph)}</span><div><strong>${esc(SHOES[s.shoe].name)}</strong><div class="small muted">${esc(SHOES[s.shoe].role)}</div></div></div>` : ""}
+      ${s.shoe && s.shoe !== "none" ? `<div class="shoe"><span class="glyph">${esc(SHOES[s.shoe].glyph)}</span><div><strong>${esc(SHOES[s.shoe].name)}</strong><div class="small muted">${esc(SHOES[s.shoe].role)}${gearFor(s.shoe) ? ` · ${gearFor(s.shoe).km.toFixed(0)} km on Strava` : ""}</div></div></div>` : ""}
       ${s.tips?.length ? `<ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</section>`;
   } else if (d === RACE) {
     h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The plan for race week appears when you generate it on Monday 7 December.</p></section>`;
@@ -966,10 +992,13 @@ function runDetail(r, s) {
     h += `<p class="small">Target ${fmtT(s.paceMin)}–${fmtT(s.paceMax)}/km · ${wp ? "work reps" : "whole run"} ${fmtP(got)}${dev != null ? ` (${dev > 0 ? "+" : ""}${dev.toFixed(1)}%)` : ""}</p>`;
   }
   if (pf && Object.keys(pf.best).length) h += `<div class="targets">${Object.keys(BE_LABEL).filter((k) => pf.best[k]).map((k) => `<span class="t">${esc(BE_LABEL[k])} <b>${fmtT(pf.best[k])}</b></span>`).join("")}</div>`;
+  const worn = r.gear ? gearById(r.gear) : null;
+  if (worn) h += `<p class="small">Shoe: <strong>${esc(worn.name)}</strong>${s?.shoe && s.shoe !== "none" && worn.key && worn.key !== s.shoe ? ` <span class="muted">(plan said ${esc(SHOES[s.shoe].name)})</span>` : ""}</p>`;
+  else if (r.gear === null && S.gear?.length) h += `<p class="small muted">No shoe tagged on this run in Strava.</p>`;
   if (r.weather) h += `<p class="small muted">${esc([r.weather.condition, r.weather.temperature != null ? Math.round(r.weather.temperature) + "°C" : null, r.weather.wind_speed != null ? Math.round(r.weather.wind_speed) + " km/h wind" : null].filter(Boolean).join(" · "))}</p>`;
   if (pf?.laps?.length > 1) h += `<div class="tablewrap"><table><thead><tr><th>Lap</th><th class="r">m</th><th class="r">Pace</th><th class="r">W</th><th class="r">spm</th>${pf.laps.some((l) => l.hr) ? `<th class="r">HR</th>` : ""}</tr></thead><tbody>${pf.laps.map((l, i) => `<tr><td>${i + 1}</td><td class="r">${Math.round(l.m)}</td><td class="r">${l.m ? fmtT(l.t / (l.m / 1000)) : "–"}</td><td class="r">${l.watts ? Math.round(l.watts) : "–"}</td><td class="r">${l.cad ? Math.round(l.cad) : "–"}</td>${pf.laps.some((x) => x.hr) ? `<td class="r">${l.hr ? Math.round(l.hr) : "–"}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
   h += `<section class="card" aria-labelledby="an-${esc(r.id)}"><h3 id="an-${esc(r.id)}">Coach’s analysis</h3>`;
-  if (S.busy?.kind === "analyse" && S.busy.runId === r.id) h += busyLine("analyse", "Efecan is reviewing this run…");
+  if (S.busy?.kind === "analyse" && S.busy.runId === r.id) h += busyLine("analyse", "The coach is reviewing this run…");
   else if (a) {
     h += `<span class="verdict ${esc(a.verdict)}">${esc({ nailed: "Nailed it", good: "Good", "off-target": "Off target", unplanned: "Unplanned" }[a.verdict] || a.verdict)}</span>
       <p><strong>${esc(a.headline)}</strong></p><div class="prose">${a.vsTarget ? `<p>${esc(a.vsTarget)}</p>` : ""}${a.effort ? `<p>${esc(a.effort)}</p>` : ""}${String(a.analysis).split(/\n\s*\n/).map((x) => `<p>${esc(x.trim())}</p>`).join("")}</div>
@@ -982,7 +1011,7 @@ function runDetail(r, s) {
 
 function renderHeader() {
   const left = daysBetween(today(), RACE);
-  $("#countdown").textContent = left >= 0 ? `Road to Sub 20 · ${left} day${left === 1 ? "" : "s"} to go` : "Road to Sub 20 · race done";
+  $("#countdown").textContent = left >= 0 ? `${left} day${left === 1 ? "" : "s"} to go` : "Race done";
   for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-current", b.dataset.view === S.view ? "page" : "false");
 }
 let lastView = null;
@@ -1060,11 +1089,11 @@ window.addEventListener("hashchange", () => { const v = location.hash.slice(1); 
 /* ================= Boot ================= */
 render();
 (async () => {
-  if (!window.claude?.use) { S.stravaLoading = false; S.stravaErr = "Open Efecan inside claude.ai to load your Strava runs."; S.store = "local"; lsLoad(); render(); return; }
+  if (!window.claude?.use) { S.stravaLoading = false; S.stravaErr = "Open Sub 20 Challenge inside claude.ai to load your Strava runs."; S.store = "local"; lsLoad(); render(); return; }
   initStore();
   claude.use("sample").then((s) => { S.sample = s; render(); });
   mcp = await claude.use("mcp");
-  if (!mcp) { S.stravaLoading = false; S.stravaErr = "Connectors aren’t available in this view. Open Efecan in claude.ai."; render(); return; }
+  if (!mcp) { S.stravaLoading = false; S.stravaErr = "Connectors aren’t available in this view. Open Sub 20 Challenge in claude.ai."; render(); return; }
   loadStrava(false);
 })();
 </script>

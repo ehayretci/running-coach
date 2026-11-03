@@ -1,10 +1,10 @@
-# Efecan: claude.ai artifact
+# Sub 20 Challenge: claude.ai artifact
 
-Efecan runs as a claude.ai artifact: https://claude.ai/artifact/Xop3BfXWRpjjTonRwffbZ7
+Sub 20 Challenge runs as a claude.ai artifact: https://claude.ai/artifact/Xop3BfXWRpjjTonRwffbZ7
 
-`efecan.html` is the page source. Publishing it gives the page four runtime capabilities:
+`sub20-challenge.html` is the page source. Publishing it gives the page four runtime capabilities:
 
-- **Strava connector** (`mcp`): `list_activities`, `get_activity_performance` and `get_athlete_zones`, read with the viewer's own Strava connection.
+- **Strava connector** (`mcp`): `list_activities`, `get_activity_performance`, `get_athlete_zones` and `get_gear` (shoe mileage), read with the viewer's own Strava connection.
 - **Claude** (`sample`): plan generation, chat changes and run analysis, on the viewer's Claude account.
 - **Storage** (`db` + `user`): weekly plans, chat history and analyses, kept privately under `data/users/<id>/`.
 
