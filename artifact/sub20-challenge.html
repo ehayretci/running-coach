@@ -192,6 +192,10 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 .gapbar { position: relative; height: 10px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
 .gapbar > div { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 99px; }
 .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.profile svg { height: 34px; }
+.profile.big svg { height: auto; }
+.profile .ax { font-size: 10px; }
+.profile .tip, .profile .legend { font-family: var(--font-body); font-weight: 400; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .ax { fill: var(--muted); font-size: 10px; font-family: var(--font-body); }
 .chart .bar { fill: var(--accent); }
@@ -685,6 +689,48 @@ function busyLine(kind, label) {
   return `<div class="thinking"><div class="spinner"></div><span>${esc(label)}</span><button class="btn small" data-act="stop">Stop</button></div>`;
 }
 
+/* ---------- Session profile: each section in order, height = pace ---------- */
+const PIECE_COLOR = { easy: "var(--easy)", work: "var(--hard)", stride: "var(--long)", rest: "var(--line)" };
+function pieces(s) {
+  const out = [];
+  for (const g of s.segments || []) {
+    if (g.reps && g.work) {
+      for (let i = 1; i <= g.reps; i++) {
+        out.push({ kind: g.kind === "strides" ? "stride" : "work", km: g.work.km, pace: g.work.pace, label: `${g.label} ${i}/${g.reps}` });
+        if (g.rest && (i < g.reps || !g.dropLastRest)) out.push({ kind: "rest", km: g.rest.km, pace: g.rest.pace, label: g.rest.label || "Recovery" });
+      }
+    } else if (g.km) out.push({ kind: "easy", km: g.km, pace: g.pace, label: g.label });
+  }
+  return out.filter((p) => p.km > 0 && Array.isArray(p.pace));
+}
+function profile(s, big) {
+  const ps = pieces(s);
+  if (!ps.length) return "";
+  const W = big ? 360 : 600, H = big ? 130 : 34, B = big ? 18 : 0, T = big ? 14 : 1;
+  const total = ps.reduce((a, p) => a + p.km, 0);
+  const mid = (p) => (p.pace[0] + p.pace[1]) / 2;
+  // one fixed scale for every session: 9:00/km at the bottom, 3:30/km at the top
+  const floor = 540, top = 210;
+  const hgt = (pace) => { const sp = 1 / Math.min(Math.max(pace, top), floor); return Math.max(2, ((sp - 1 / floor) / (1 / top - 1 / floor)) * (H - T - B)); };
+  let x = 0, g = "";
+  for (const p of ps) {
+    const w = (p.km / total) * W, h = hgt(mid(p));
+    const pace = p.pace[0] === p.pace[1] ? fmtT(p.pace[0]) : `${fmtT(p.pace[0])}–${fmtT(p.pace[1])}`;
+    const dist = p.km >= 1 ? `${+p.km.toFixed(2)} km` : `${Math.round(p.km * 1000)} m`;
+    g += `<g data-tip="${esc(p.label)} · ${esc(dist)} @ ${esc(pace)}/km"><rect x="${x.toFixed(2)}" y="${T}" width="${Math.max(0.5, w).toFixed(2)}" height="${H - T - B}" fill="transparent"/><rect x="${(x + 0.5).toFixed(2)}" y="${(H - B - h).toFixed(2)}" width="${Math.max(0.5, w - 1).toFixed(2)}" height="${h.toFixed(2)}" rx="${big ? 2 : 1}" fill="${PIECE_COLOR[p.kind]}"/></g>`;
+    x += w;
+  }
+  if (big) {
+    const work = ps.filter((p) => p.kind === "work");
+    const refs = [...new Set([work.length ? mid(work[0]) : null, mid(ps.find((p) => p.kind === "easy") || ps[0])].filter(Boolean).map(Math.round))];
+    g = refs.map((r) => `<line class="grid" x1="0" x2="${W}" y1="${(H - B - hgt(r)).toFixed(1)}" y2="${(H - B - hgt(r)).toFixed(1)}" stroke-dasharray="3 3"/><text class="ax" x="${W}" y="${(H - B - hgt(r) - 3).toFixed(1)}" text-anchor="end">${fmtT(r)}/km</text>`).join("") + g;
+    g += `<text class="ax" x="0" y="${H - 4}">0</text><text class="ax" x="${W}" y="${H - 4}" text-anchor="end">${+(s.distanceKm || total).toFixed(1)} km</text>`;
+  }
+  const kinds = [...new Set(ps.map((p) => p.kind))];
+  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}</div>` : "";
+  return `<div class="chart profile${big ? " big" : ""}"><svg viewBox="0 0 ${W} ${H}" ${big ? "" : 'preserveAspectRatio="none"'} role="img" aria-label="Session sections in order">${g}</svg>${big ? `<div class="tip" aria-live="polite">Hover or tap a section for its pace.</div>` : ""}${legend}</div>`;
+}
+
 function renderWeek() {
   const t = today();
   const wk = monday(t);
@@ -723,7 +769,7 @@ function dayRow(d, s) {
   return `<button type="button" class="day${isToday ? " today" : ""}${state}" data-open="${esc(d)}">${dn}<div class="body">
     <div class="row1">${tag(s.type)}<span class="title">${esc(s.title)}</span>${status}${s.distanceKm ? `<span class="km num">${esc(s.distanceKm)}</span>` : ""}</div>
     ${s.details && !rest ? `<div class="details">${esc(s.details)}</div>` : ""}
-    ${rest ? "" : targets(s)}${runLine}</div></button>`;
+    ${rest ? "" : profile(s, false) + targets(s)}${runLine}</div></button>`;
 }
 
 function renderCalendar() {
@@ -862,9 +908,8 @@ function renderDrawer() {
   let h = `<div class="drawer-head"><div><div class="eyebrow">${esc(fdate(d, { weekday: "long", day: "numeric", month: "long" }))}</div><h2 id="drawer-title">${esc(runs[0]?.name || s?.title || (d === RACE ? "Race day" : "Day"))}</h2></div><button class="btn small x" data-act="close" aria-label="Close">Close</button></div>`;
   if (s) {
     h += `<section class="card"><div class="row1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(s.type)}<strong>${esc(s.title)}</strong>${s.distanceKm ? `<span class="mono">${esc(s.distanceKm)} km</span>` : ""}</div>
-      ${s.details ? `<p>${esc(s.details)}</p>` : ""}${targets(s)}${s.why ? `<p class="muted small">${esc(s.why)}</p>` : ""}
-      ${s.shoe && s.shoe !== "none" ? `<div class="shoe"><span class="glyph">${esc(SHOES[s.shoe].glyph)}</span><div><strong>${esc(SHOES[s.shoe].name)}</strong><div class="small muted">${esc(SHOES[s.shoe].role)}${gearFor(s.shoe) ? ` · ≈${gearFor(s.shoe).km.toFixed(0)} km` : ""}</div></div></div>` : ""}
-      ${s.tips?.length ? `<ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</section>`;
+      ${s.details ? `<p>${esc(s.details)}</p>` : ""}${profile(s, true)}${targets(s)}
+      ${s.tips?.length ? `<div><div class="eyebrow">Tips</div><ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</section>`;
   } else if (d === RACE) {
     h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The race-week plan appears once you ask Claude for it on Monday 7 December.</p></section>`;
   }
