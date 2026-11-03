@@ -1,0 +1,150 @@
+{
+ "weekStart": "2026-11-02",
+ "notes": "Sunday: 6-a-side football, expect ~6 km of rapid intervals. Monday was the all-out baseline 5K. Happy to run the rest as needed. Aiming for sub-20 by 10 Dec.",
+ "summary": "Week 1 of 6. Monday's 22:04 sets your baseline at VDOT 44.4; sub-20 needs 49.9, so you need about +1 VDOT a week for five weeks. That's roughly double a typical rate, so every week has to count. This week absorbs Monday's all-out effort, then puts one sharp session on Thursday at 4:06–4:10/km, already between your interval pace (4:18) and goal pace (4:00). Sunday's football is your second hard day, so Saturday is fully off. Running goes up from ~14 km a week recently to ~25 km this week, the main risk. If calves or shins complain after Thursday, cut Friday to 3 km or skip it.",
+ "sessions": [
+  {
+   "id": "w1-mon",
+   "date": "2026-11-02",
+   "type": "timetrial",
+   "title": "Baseline 5K",
+   "distanceKm": 5,
+   "details": "All-out 5K to set the starting point.",
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "shoe": "cloudmonster",
+   "why": "Sets your baseline: 22:04 at 372 W.",
+   "tips": []
+  },
+  {
+   "id": "w1-tue",
+   "date": "2026-11-03",
+   "type": "rest",
+   "title": "Rest",
+   "distanceKm": 0,
+   "details": "Full rest after Monday's all-out 5K.",
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "shoe": "none",
+   "why": "An all-out 5K takes 48–72 hours to absorb. Resting today lets Thursday's session be a real quality day.",
+   "tips": [
+    "10 minutes of easy mobility (calves, hips, hamstrings) is enough.",
+    "Get a full night's sleep; it's the best recovery tool you have."
+   ]
+  },
+  {
+   "id": "w1-wed",
+   "date": "2026-11-04",
+   "type": "easy",
+   "title": "Easy run + strides",
+   "distanceKm": 6,
+   "details": "6 km relaxed at 5:25–5:50/km, then 6 × 20 s strides (fast but smooth) with a full walk-back recovery.",
+   "paceMin": 325,
+   "paceMax": 350,
+   "powerMin": 275,
+   "powerMax": 300,
+   "hrMin": 125,
+   "hrMax": 150,
+   "shoe": "vomero",
+   "why": "Flushes Monday's effort and builds easy volume. The strides keep the legs sharp for Thursday. Cushioned Vomero, since your legs are still recovering.",
+   "tips": [
+    "Easy means conversational. If power climbs above 300 W, slow down.",
+    "Do the strides on flat ground and stop at fast-but-relaxed, not a sprint.",
+    "Your runs don't record HR yet, so use power and talk-test as your guide."
+   ]
+  },
+  {
+   "id": "w1-thu",
+   "date": "2026-11-05",
+   "type": "intervals",
+   "title": "Intervals: 6 × 800 m",
+   "distanceKm": 9.5,
+   "details": "2 km easy + drills + 4 strides · 6 × 800 m @ 4:06–4:10/km (3:17–3:20 per rep), 400 m easy jog between · 1.5 km cool-down.",
+   "paceMin": 246,
+   "paceMax": 250,
+   "powerMin": 385,
+   "powerMax": 395,
+   "hrMin": 172,
+   "hrMax": 184,
+   "shoe": "cloudmonster",
+   "why": "Your key session: 800 m reps at a pace between your current interval pace (4:18) and goal pace (4:00) teach your body sub-20 speed in pieces short enough to hold. The Cloudmonster already handled Monday's 5K, so it suits this session and saves the Vaporfly for goal-pace and race days.",
+   "tips": [
+    "Track or a flat, measured loop. Lap every rep so the app can read your splits.",
+    "Rep 1 should feel controlled. Run every rep within 2 s of the others. A fast first rep and a fade is the most common mistake.",
+    "If you can't hold 4:10 by rep 5, stop at 5. Quality beats completion.",
+    "Power target 385–395 W. HR lags on 800s, so pace by power or splits."
+   ]
+  },
+  {
+   "id": "w1-fri",
+   "date": "2026-11-06",
+   "type": "easy",
+   "title": "Easy aerobic run",
+   "distanceKm": 5,
+   "details": "5 km relaxed at 5:30–5:55/km. No strides today.",
+   "paceMin": 330,
+   "paceMax": 355,
+   "powerMin": 270,
+   "powerMax": 295,
+   "hrMin": 125,
+   "hrMax": 150,
+   "shoe": "vomero",
+   "why": "Easy volume the day after intervals. It builds aerobic base without adding stress before Sunday's football.",
+   "tips": [
+    "Truly easy. Being slower than you think you should be is the point.",
+    "If your legs feel heavy from Thursday, make it 3 km or a rest day. Saturday and Sunday matter more."
+   ]
+  },
+  {
+   "id": "w1-sat",
+   "date": "2026-11-07",
+   "type": "rest",
+   "title": "Rest",
+   "distanceKm": 0,
+   "details": "Rest before football.",
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "shoe": "none",
+   "why": "Sunday's football is a hard, high-intensity session. Arrive fresh so it adds fitness, not fatigue or a tweak.",
+   "tips": [
+    "Hydrate well and eat normal carbs today.",
+    "Light calf and hip mobility in the evening."
+   ]
+  },
+  {
+   "id": "w1-sun",
+   "date": "2026-11-08",
+   "type": "football",
+   "title": "6-a-side football (≈6 km of sprints)",
+   "distanceKm": 6,
+   "details": "Match play: about 6 km of repeated sprints, changes of direction and jogging. This is your second hard session of the week. Do no extra running today.",
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 170,
+   "hrMax": 190,
+   "shoe": "none",
+   "why": "Repeated sprints are real VO₂max and anaerobic work, so football counts as a quality session. The lateral cuts are the injury risk, not the distance.",
+   "tips": [
+    "Warm up properly: 8–10 min of easy jogging, leg swings, skips and a few short accelerations before kick-off.",
+    "Wear football boots or astro trainers, not your running shoes.",
+    "Record it on Strava (as football/workout) so next week's plan accounts for the load.",
+    "Afterwards: refuel within an hour and stretch calves and hips. Monday will be an easy day."
+   ]
+  }
+ ],
+ "generatedAt": 1793749238412
+}

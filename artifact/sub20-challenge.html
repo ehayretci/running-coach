@@ -271,12 +271,12 @@ const SHOES = {
  *  under 6 km = Vaporfly, 6 km+ = Vomero, × 1.2 for unlogged running. */
 const SHOE_START_KM = { vaporfly: 241, vomero: 352, cloudmonster: 0 };
 const TYPES = {
-  easy: ["Easy", ""], recovery: ["Recovery", ""], long: ["Long", "long"], shakeout: ["Shake-out", ""],
+  run: ["Run", ""], easy: ["Easy", ""], recovery: ["Recovery", ""], long: ["Long", "long"], shakeout: ["Shake-out", ""],
   intervals: ["Intervals", "hard"], tempo: ["Tempo", "hard"], goalpace: ["Goal pace", "hard"], timetrial: ["Time trial", "hard"],
-  race: ["Race", "race"], rest: ["Rest", "rest"], cross: ["Cross-train", "rest"],
+  race: ["Race", "race"], football: ["Football", "hard"], rest: ["Rest", "rest"], cross: ["Cross-train", "rest"],
 };
-const SHORT = { easy: "Easy", recovery: "Rec", long: "Long", shakeout: "Shake", intervals: "Int", tempo: "Tempo", goalpace: "Goal", timetrial: "TT", race: "Race", rest: "Rest", cross: "X" };
-const HARD = ["intervals", "tempo", "goalpace", "timetrial", "race"];
+const SHORT = { easy: "Easy", recovery: "Rec", long: "Long", shakeout: "Shake", intervals: "Int", tempo: "Tempo", goalpace: "Goal", timetrial: "TT", race: "Race", football: "Ball", rest: "Rest", cross: "X" };
+const HARD = ["intervals", "tempo", "goalpace", "timetrial", "race", "football"];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const BE_LONG = { Fastest2Mile: 3218.69, Fastest5k: 5000, Fastest10k: 10000 };
 const BE_SHORT = { Fastest1k: 1000, FastestMile: 1609.34 };
@@ -312,52 +312,42 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 const S = {
   view: ["week", "calendar", "stats"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
   runs: [], perf: {}, zones: null, gear: null, stravaErr: null, stravaLoading: true,
-  weeks: {}, analyses: {}, prefs: { runDays: [1, 3, 5, 6] },
+  weeks: {}, analyses: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
   busy: null, // {kind, ctl}
   drawer: null, // {date} or {runId}
-  draftNotes: "",
 };
-let mcp = null, db = null, userId = null;
+let mcp = null, db = null;
 
 /* ================= Persistence (private to you) ================= */
-const LS = "efecan-store-v1";
-function lsLoad() { try { const o = JSON.parse(localStorage.getItem(LS) || "{}"); S.weeks = o.weeks || {}; S.analyses = o.analyses || {}; if (o.prefs) S.prefs = o.prefs; } catch { /* ignore */ } }
-function lsSave() { try { localStorage.setItem(LS, JSON.stringify({ weeks: S.weeks, analyses: S.analyses, prefs: S.prefs })); } catch { /* ignore */ } }
-const docId = { week: (m) => `week-${m}`, analysis: (id) => `analysis-${id}`, prefs: "prefs" };
-const writing = new Map();
-async function save(id, body) {
-  if (!db || !userId) { lsSave(); return; }
-  const prev = writing.get(id) || Promise.resolve();
-  const next = prev.catch(() => {}).then(() => db.collection("data/users/" + userId).doc(id).set(body));
-  writing.set(id, next);
-  try { await next; S.storeErr = null; } catch (e) { S.storeErr = "Couldn’t save to your account (" + (e?.code || "error") + "). Changes are kept on this device only."; lsSave(); render(); }
+const LS = "sub20-store-v1";
+function lsLoad() { try { const o = JSON.parse(localStorage.getItem(LS) || "{}"); S.analyses = o.analyses || {}; } catch { /* ignore */ } }
+function lsSave() { try { localStorage.setItem(LS, JSON.stringify({ analyses: S.analyses })); } catch { /* ignore */ } }
+/** Plans live in `weeks/<monday>` — written by Claude in your chat. Run analyses live in `analyses/<runId>`. */
+async function saveAnalysis(id) {
+  if (!db) { lsSave(); return; }
+  try { await db.collection("analyses").doc(id).set(S.analyses[id]); S.storeErr = null; }
+  catch (e) { S.storeErr = "Couldn’t save the analysis (" + (e?.code || "error") + "). It’s kept on this device only."; lsSave(); render(); }
 }
-const saveWeek = (m) => save(docId.week(m), S.weeks[m]);
-const saveAnalysis = (id) => save(docId.analysis(id), S.analyses[id]);
-const savePrefs = () => save(docId.prefs, S.prefs);
-
 async function initStore() {
-  const [d, u] = await Promise.all([claude.use("db"), claude.use("user")]);
-  userId = u ? await u.id().catch(() => null) : null;
-  if (!d || !userId) { S.store = "local"; lsLoad(); render(); return; }
-  db = d;
-  const timer = setTimeout(() => { if (S.store !== "ready") { S.storeErr = "Your saved plans can’t be reached yet — showing what’s on this device."; render(); } }, 10000);
-  db.collection("data/users/" + userId).onSnapshot((snap) => {
-    const weeks = {}, analyses = {};
-    let prefs = null;
-    for (const doc of snap.docs) {
-      const body = doc.data();
-      if (!body) continue;
-      if (doc.id.startsWith("week-")) weeks[doc.id.slice(5)] = body;
-      else if (doc.id.startsWith("analysis-")) analyses[doc.id.slice(9)] = body;
-      else if (doc.id === "prefs") prefs = body;
-    }
-    S.weeks = weeks; S.analyses = analyses; if (prefs) S.prefs = { ...S.prefs, ...prefs };
-    if (!snap.metadata.fromCache) { clearTimeout(timer); S.storeErr = null; }
+  db = await claude.use("db");
+  if (!db) { S.store = "local"; lsLoad(); render(); return; }
+  let got = 0;
+  const timer = setTimeout(() => { if (got < 2) { S.storeErr = "Your saved plans can’t be reached yet."; render(); } }, 10000);
+  const onErr = (e) => { clearTimeout(timer); S.storeErr = "Saved plans aren’t available in this view (" + e.code + ")."; render(); };
+  db.collection("weeks").onSnapshot((snap) => {
+    const weeks = {};
+    for (const doc of snap.docs) { const b = doc.data(); if (b && Array.isArray(b.sessions)) weeks[doc.id] = b; }
+    S.weeks = weeks; if (!snap.metadata.fromCache) { got |= 1; if (got === 3) { clearTimeout(timer); S.storeErr = null; } }
     S.store = "ready"; render();
-  }, (e) => { clearTimeout(timer); S.store = "local"; S.storeErr = "Saving to your account isn’t available (" + e.code + "). Using this device only."; lsLoad(); render(); });
+  }, onErr);
+  db.collection("analyses").onSnapshot((snap) => {
+    const a = {};
+    for (const doc of snap.docs) { const b = doc.data(); if (b) a[doc.id] = b; }
+    S.analyses = a; if (!snap.metadata.fromCache) { got |= 2; if (got === 3) { clearTimeout(timer); S.storeErr = null; } }
+    render();
+  }, onErr);
 }
 
 /* ================= Strava (through your connector) ================= */
@@ -414,7 +404,7 @@ async function loadGear() {
     const list = (r.payload && r.payload.gear) || [];
     S.gear = list.map((g) => {
       const key = shoeKey([g.name, g.brand, g.model_name, g.description].join(" "));
-      const strava = (num(g.distance) ?? 0) / 1000, start = key ? SHOE_START_KM[key] || 0 : 0;
+      const strava = (num(g.total_distance) ?? num(g.distance) ?? 0) / 1000, start = key ? SHOE_START_KM[key] || 0 : 0;
       return { id: String(g.gear_id?.id ?? g.id ?? ""), name: [g.brand, g.model_name].filter(Boolean).join(" ") || g.name || "Shoe", nick: g.name || "", strava, start, km: strava + start, retired: !!g.retired, key };
     });
     render();
@@ -553,8 +543,8 @@ function validate(sessions, weekStart) {
   for (const s of sessions) if (HARD.includes(s.type) && s.type !== "race" && s.date < RACE && daysBetween(s.date, RACE) <= 2) issues.push({ block: true, text: `Hard session on ${fdate(s.date)} is within 2 days of the race.` });
   const prev = [1, 2, 3].map((k) => weekKm(addDays(weekStart, -7 * k)));
   const avg = prev.reduce((a, b) => a + b, 0) / 3;
-  const km = sessions.reduce((a, s) => a + (s.distanceKm || 0), 0) + S.runs.filter((r) => r.date >= weekStart && r.date < today()).reduce((a, r) => a + r.km, 0);
-  if (avg > 8 && km > avg * 1.3) issues.push({ block: false, text: `≈${km.toFixed(0)} km this week vs ${avg.toFixed(0)} km/week over the last 3 weeks (+${Math.round((km / avg - 1) * 100)}%).` });
+  const km = sessions.filter((s) => s.type !== "football").reduce((a, s) => a + (s.distanceKm || 0), 0) + S.runs.filter((r) => r.date >= weekStart && r.date < today()).reduce((a, r) => a + r.km, 0);
+  if (avg > 8 && km > avg * 1.3) issues.push({ block: false, text: `≈${km.toFixed(0)} km of running this week vs ${avg.toFixed(0)} km/week over the last 3 weeks (+${Math.round((km / avg - 1) * 100)}%).` });
   return issues;
 }
 
@@ -573,8 +563,6 @@ Coaching rules:
   none = rest days.
 - 2–4 short, practical tips per run: warm-up/drills/strides, pacing strategy, surface (track vs road), fuelling/hydration, recovery, form cues, weather/kit.
 - Clear, friendly, concise English.`;
-
-const SESSION_SHAPE = `{"date":"YYYY-MM-DD","type":"easy|recovery|long|intervals|tempo|goalpace|timetrial|race|rest|shakeout|cross","title":"short name","distanceKm":number (total incl. warm-up/cool-down, 0 for rest),"details":"exact structure, e.g. 2 km easy + 4 strides · 5 × 1 km @ 3:58–4:02/km, 90 s jog · 1.5 km cool-down","paceMin":seconds per km of the FAST end of the main-set pace window (0 if n/a),"paceMax":seconds per km of the SLOW end (0 if n/a),"powerMin":watts (0 if n/a),"powerMax":watts (0 if n/a),"hrMin":bpm (0 if n/a),"hrMax":bpm (0 if n/a),"shoe":"vomero|cloudmonster|vaporfly|none","why":"1–2 sentences: purpose of the session and why this shoe","tips":["…","…"]}`;
 
 function context(weekStart, asOf = today()) {
   const L = [];
@@ -628,20 +616,6 @@ function context(weekStart, asOf = today()) {
 }
 
 /* ================= Claude calls ================= */
-function cleanSessions(list, from, weekStart) {
-  const end = addDays(weekStart, 6);
-  const n = (x) => (typeof x === "number" && isFinite(x) ? Math.round(x * 10) / 10 : Number(x) || 0);
-  return (Array.isArray(list) ? list : [])
-    .filter((s) => s && typeof s.date === "string" && s.date >= from && s.date <= end)
-    .map((s) => ({
-      id: uid(), date: s.date, type: TYPES[s.type] ? s.type : "easy", title: String(s.title || TYPES[s.type]?.[0] || "Run"),
-      distanceKm: n(s.distanceKm), details: String(s.details || ""), paceMin: Math.round(n(s.paceMin)), paceMax: Math.round(n(s.paceMax)),
-      powerMin: Math.round(n(s.powerMin)), powerMax: Math.round(n(s.powerMax)), hrMin: Math.round(n(s.hrMin)), hrMax: Math.round(n(s.hrMax)),
-      shoe: SHOES[s.shoe] ? s.shoe : "none", why: String(s.why || ""), tips: Array.isArray(s.tips) ? s.tips.map(String).slice(0, 5) : [],
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .filter((s, i, arr) => arr.findIndex((x) => x.date === s.date) === i); // one session per day
-}
 function sampleMsg(e) {
   switch (e?.code) {
     case "cancelled": return null;
@@ -652,60 +626,6 @@ function sampleMsg(e) {
     case "refused": return "Claude declined that request. Try rephrasing.";
     case "prompt_too_large": return "Too much data for one request.";
     default: return "Couldn’t reach Claude just now. Try again.";
-  }
-}
-async function generateWeek(weekStart, notes, runDays) {
-  const from = today() > weekStart ? today() : weekStart;
-  const prompt = `${COACH}\n\n${context(weekStart)}\n\nAVAILABLE RUNNING DAYS: ${runDays.map((d) => DAYS[d]).join(", ")}\nATHLETE NOTES FOR THIS WEEK: ${notes.trim() || "(none)"}\n\nPlan every day from ${from} through ${addDays(weekStart, 6)} (rest days included). Use the notes and the data. If a note asks for something unwise, adjust it and explain why in the summary.\n\nReply with only this JSON:\n{"summary":"3–5 sentences: this week's focus, how it builds on recent training, an honest read of where the athlete stands vs sub-20","sessions":[${SESSION_SHAPE}, …]}`;
-  const ctl = new AbortController();
-  S.busy = { kind: "generate", ctl }; render();
-  try {
-    let out = await S.sample.json(prompt, { modelTier: "complex", cache: false, signal: ctl.signal });
-    let sessions = cleanSessions(out?.sessions, from, weekStart);
-    const issues = validate(sessions, weekStart).filter((i) => i.block);
-    if (issues.length) {
-      out = await S.sample.json([{ role: "user", content: prompt }, { role: "assistant", content: JSON.stringify(out) }, { role: "user", content: "The app's safety checks flagged:\n" + issues.map((i) => "- " + i.text).join("\n") + "\nFix these and reply with the corrected JSON only." }], { modelTier: "complex", cache: false, signal: ctl.signal });
-      sessions = cleanSessions(out?.sessions, from, weekStart);
-    }
-    if (!sessions.length) throw { code: "invalid_json" };
-    S.weeks[weekStart] = { weekStart, notes, runDays, summary: String(out.summary || ""), sessions, chat: [], generatedAt: Date.now() };
-    S.prefs = { ...S.prefs, runDays }; S.draftNotes = "";
-    S.busy = null; render();
-    await saveWeek(weekStart); savePrefs();
-  } catch (e) {
-    S.busy = null; S.sampleErr = sampleMsg(e); render();
-  }
-}
-async function chat(weekStart, text) {
-  const plan = S.weeks[weekStart];
-  const t = today();
-  const from = t > weekStart ? t : weekStart;
-  const remaining = plan.sessions.filter((s) => s.date >= from).map(({ id, ...s }) => s);
-  const rules = `${COACH}\n\n${context(weekStart)}\n\nNOTES WHEN THIS WEEK WAS PLANNED: ${plan.notes || "(none)"}\nCURRENT PLAN (remaining days):\n${JSON.stringify(remaining)}\n\nYou are chatting with the athlete about this week's plan. Apply sensible changes (moving, swapping, shortening sessions). If a request breaks the coaching rules or is unwise (two hard days in a row, cramming missed work, a hard session before the race, a big jump in volume, running through pain), push back: explain why in plain words with the reasoning, offer the best alternative, and do NOT apply the unwise version. Pain or injury: be cautious, suggest rest or a physio. Only plan dates ${from} to ${addDays(weekStart, 6)}.\n\nEvery reply is only this JSON: {"reply":"what you say to the athlete","changed":true|false,"sessions":[the FULL remaining plan after your changes, or unchanged — each ${SESSION_SHAPE}]}`;
-  plan.chat = [...(plan.chat || []), { role: "user", text, at: Date.now() }];
-  const ctl = new AbortController();
-  S.busy = { kind: "chat", ctl }; render(); scrollChat();
-  const turns = [{ role: "user", content: rules }, { role: "assistant", content: '{"reply":"Got it — what would you like to change?","changed":false,"sessions":[]}' }];
-  for (const m of plan.chat.slice(-12)) turns.push({ role: m.role, content: m.role === "assistant" ? JSON.stringify({ reply: m.text }) : m.text });
-  try {
-    let out = await S.sample.json(turns, { cache: false, signal: ctl.signal });
-    if (out?.changed) {
-      const proposed = [...plan.sessions.filter((s) => s.date < from), ...cleanSessions(out.sessions, from, weekStart)];
-      const issues = validate(proposed, weekStart).filter((i) => i.block);
-      if (issues.length) {
-        out = await S.sample.json([...turns, { role: "assistant", content: JSON.stringify(out) }, { role: "user", content: "[App safety check — not from the athlete] That plan breaks these rules:\n" + issues.map((i) => "- " + i.text).join("\n") + "\nDon't apply it. Reply to the athlete explaining why, with a safe alternative. JSON only." }], { cache: false, signal: ctl.signal });
-      }
-    }
-    if (out?.changed) {
-      const next = cleanSessions(out.sessions, from, weekStart);
-      if (next.length) plan.sessions = [...plan.sessions.filter((s) => s.date < from), ...next];
-    }
-    plan.chat.push({ role: "assistant", text: String(out?.reply || "…"), at: Date.now() });
-    S.busy = null; render(); scrollChat();
-    await saveWeek(weekStart);
-  } catch (e) {
-    plan.chat.pop();
-    S.busy = null; S.sampleErr = sampleMsg(e); render();
   }
 }
 async function analyse(run) {
@@ -744,7 +664,8 @@ function targets(s) {
   if (s.paceMax) out.push(`<span class="t">Pace <b>${esc(s.paceMin && s.paceMin !== s.paceMax ? fmtT(s.paceMin) + "–" + fmtT(s.paceMax) : fmtT(s.paceMax))}</b>/km</span>`);
   if (s.powerMax) out.push(`<span class="t">Power <b>${esc(s.powerMin)}–${esc(s.powerMax)}</b> W</span>`);
   if (s.hrMax) out.push(`<span class="t">HR <b>${esc(s.hrMin)}–${esc(s.hrMax)}</b></span>`);
-  if (s.shoe && s.shoe !== "none") out.push(`<span class="t">Shoe <b>${esc(SHOES[s.shoe].name.replace(/^(Nike|On) /, ""))}</b></span>`);
+  if (s.type === "football") out.push(`<span class="t">Shoe <b>Football boots</b></span>`);
+  else if (s.shoe && s.shoe !== "none") out.push(`<span class="t">Shoe <b>${esc(SHOES[s.shoe].name.replace(/^(Nike|On) /, ""))}</b></span>`);
   return out.length ? `<div class="targets">${out.join("")}</div>` : "";
 }
 function banners() {
@@ -752,7 +673,6 @@ function banners() {
   if (S.stravaErr) b.push(`<div class="banner bad"><span class="dot"></span><div>${esc(S.stravaErr)} <button class="linkish" data-act="reload-strava">Load runs</button></div></div>`);
   if (S.sampleErr) b.push(`<div class="banner warn"><span class="dot"></span><div>${esc(S.sampleErr)} <button class="linkish" data-act="dismiss-sample">Dismiss</button></div></div>`);
   if (S.storeErr) b.push(`<div class="banner warn"><span class="dot"></span><div>${esc(S.storeErr)}</div></div>`);
-  if (S.store === "local" && !S.storeErr) b.push(`<div class="banner"><span class="dot"></span><div>Plans are saved on this device only in this view.</div></div>`);
   return b.join("");
 }
 function busyLine(kind, label) {
@@ -768,41 +688,21 @@ function renderWeek() {
   const phase = weeksLeft <= 0 ? "Race week" : weeksLeft === 1 ? "Taper week" : `${weeksLeft} weeks to race week`;
   const end = addDays(wk, 6);
   let h = `<div class="week-head"><div><div class="eyebrow">This week · ${esc(phase)}</div><div class="range">${esc(fdate(wk, { day: "numeric", month: "short" }))} – ${esc(fdate(end, { day: "numeric", month: "short" }))}</div></div>
-    <div class="chips"><span class="chip num">${weekKm(wk).toFixed(1)} km run</span>${plan ? `<span class="chip accent num">${plan.sessions.reduce((a, s) => a + s.distanceKm, 0).toFixed(0)} km planned</span>` : ""}</div></div>`;
+    <div class="chips"><span class="chip num">${weekKm(wk).toFixed(1)} km run</span>${plan ? `<span class="chip accent num">${plan.sessions.filter((s) => s.type !== "football").reduce((a, s) => a + (s.distanceKm || 0), 0).toFixed(0)} km running planned</span>` : ""}</div></div>`;
   h += banners();
-
   if (!plan) {
-    const pastRuns = S.runs.filter((r) => r.date >= wk && r.date < t);
-    const days = S.prefs.runDays || [];
-    h += `<section class="gen" aria-labelledby="gen-h">
-      <div><h2 id="gen-h">Plan this week</h2><p class="muted small">The coach reads your Strava runs from the last 5 weeks plus your notes, then plans every day from today to Sunday.</p></div>
-      <label>Days you can run<div class="daypick" id="daypick">${DAYS.map((d, i) => `<button type="button" data-day="${i}" aria-pressed="${days.includes(i)}">${d}</button>`).join("")}</div></label>
-      <label for="notes">Notes for the coach
-        <textarea id="notes" rows="4" placeholder="e.g. Legs heavy after Monday's 5K. Busy Thursday evening. Track access Wednesday. Slight tightness in left calf.">${esc(S.draftNotes)}</textarea></label>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn primary" data-act="generate" ${S.busy || !S.sample || S.stravaLoading ? "disabled" : ""}>Generate plan</button>
-        ${!S.sample ? `<span class="muted small">Claude isn’t available in this view.</span>` : S.stravaLoading ? `<span class="muted small">Waiting for Strava…</span>` : ""}
-      </div>
-      ${busyLine("generate", "The coach is building your week — this usually takes 30–90 seconds.")}
-    </section>`;
-    if (pastRuns.length) h += `<section class="days">${pastRuns.map((r) => dayRow(r.date, null)).join("")}</section>`;
+    const pastRuns = S.runs.filter((r) => r.date >= wk && r.date <= t);
+    h += `<div class="empty"><h3>No plan for this week yet</h3><p class="small">${S.store === "ready" || S.store === "local" ? "Ask Claude in your chat to plan this week. It reads your Strava runs and your notes, and the plan appears here." : "Loading saved plans…"}</p></div>`;
+    if (pastRuns.length) h += `<div class="eyebrow">Done so far</div><section class="days">${pastRuns.map((r) => dayRow(r.date, null)).join("")}</section>`;
     return h;
   }
-
   if (plan.summary) h += `<p class="summary">${esc(plan.summary)}</p>`;
-  const issues = validate(plan.sessions, wk).filter((i) => !i.block);
+  const issues = validate(plan.sessions.filter((s) => s.date >= t), wk).filter((i) => !i.block);
   if (issues.length) h += `<div class="banner warn"><span class="dot"></span><div>${issues.map((i) => esc(i.text)).join("<br>")}</div></div>`;
   h += `<section class="days">`;
   for (let i = 0; i < 7; i++) { const d = addDays(wk, i); if (d > RACE) break; h += dayRow(d, plan.sessions.find((s) => s.date === d)); }
   h += `</section>`;
-
-  h += `<section class="chat" aria-labelledby="chat-h">
-    <div><h3 id="chat-h">Change the plan</h3><p class="muted small">Tell the coach what’s changed — it rearranges the week, or explains why not.</p></div>
-    <div class="msgs" id="msgs">${(plan.chat || []).map((m) => `<div class="msg ${m.role}">${esc(m.text)}</div>`).join("") || `<p class="muted small">Try: “I can’t run Tuesday this week, can we move it to Wednesday?”</p>`}</div>
-    ${busyLine("chat", "The coach is thinking…")}
-    <form id="chatform"><textarea id="chatinput" rows="1" placeholder="Message the coach" ${S.busy || !S.sample ? "disabled" : ""}></textarea><button class="btn primary" type="submit" ${S.busy || !S.sample ? "disabled" : ""}>Send</button></form>
-  </section>
-  <p class="muted small">Plan generated ${esc(new Date(plan.generatedAt).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }))}. <button class="linkish" data-act="regen">Start this week over</button></p>`;
+  if (plan.generatedAt) h += `<p class="muted small">Planned ${esc(new Date(plan.generatedAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}.</p>`;
   return h;
 }
 function dayRow(d, s) {
@@ -813,7 +713,7 @@ function dayRow(d, s) {
   const runLine = runs.map((r) => `<div class="done-line">✓ ${r.km.toFixed(2)} km · ${fmtT(r.moving)} · ${fmtP(r.pace)}${S.perf[r.id]?.watts ? " · " + Math.round(S.perf[r.id].watts) + " W" : ""}</div>`).join("");
   if (!s) {
     if (!runs.length) return "";
-    return `<button type="button" class="day${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("easy")}<span class="title">${esc(runs[0].name)}</span><span class="km num">${runs[0].km.toFixed(1)}</span></div>${runLine}</div></button>`;
+    return `<button type="button" class="day${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("run")}<span class="title">${esc(runs[0].name)}</span><span class="km num">${runs[0].km.toFixed(1)}</span></div>${runLine}</div></button>`;
   }
   const rest = s.type === "rest" || s.type === "cross";
   const status = runs.length ? `<span class="status done">Done</span>` : !rest && d < t ? `<span class="status missed">Missed</span>` : "";
@@ -844,7 +744,7 @@ function renderCalendar() {
   }
   h += `</div>`;
   const nRuns = challengeRuns().length, km = challengeRuns().reduce((a, r) => a + r.km, 0);
-  h += `<p class="muted small num">${nRuns} runs · ${km.toFixed(1)} km since 2 Nov. Only this week has a plan — next week’s appears when you generate it on Monday.</p>`;
+  h += `<p class="muted small num">${nRuns} runs · ${km.toFixed(1)} km since 2 Nov. Only this week has a plan. Next week’s appears when you ask Claude for it on Monday.</p>`;
   return h;
 }
 
@@ -972,7 +872,7 @@ function renderDrawer() {
       ${s.shoe && s.shoe !== "none" ? `<div class="shoe"><span class="glyph">${esc(SHOES[s.shoe].glyph)}</span><div><strong>${esc(SHOES[s.shoe].name)}</strong><div class="small muted">${esc(SHOES[s.shoe].role)}${gearFor(s.shoe) ? ` · ≈${gearFor(s.shoe).km.toFixed(0)} km` : ""}</div></div></div>` : ""}
       ${s.tips?.length ? `<ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</section>`;
   } else if (d === RACE) {
-    h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The plan for race week appears when you generate it on Monday 7 December.</p></section>`;
+    h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The race-week plan appears once you ask Claude for it on Monday 7 December.</p></section>`;
   }
   for (const r of runs) h += runDetail(r, s);
   if (!runs.length && s && s.type !== "rest" && d < today()) h += `<div class="banner bad"><span class="dot"></span><div>No run recorded on Strava for this day.</div></div>`;
@@ -1024,31 +924,18 @@ function renderHeader() {
 let lastView = null;
 function render() {
   renderHeader();
-  const keepNotes = $("#notes")?.value; if (keepNotes != null) S.draftNotes = keepNotes;
-  const chatVal = $("#chatinput")?.value;
   const view = $("#view");
   if (S.stravaLoading && !S.runs.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Strava…</p></div>`;
   else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : renderStats();
-  if (chatVal && $("#chatinput")) $("#chatinput").value = chatVal;
   if (lastView !== S.view) { window.scrollTo(0, 0); lastView = S.view; }
   const scrim = $("#scrim");
   if (S.drawer) { $("#drawer").innerHTML = renderDrawer(); scrim.hidden = false; } else scrim.hidden = true;
 }
-function scrollChat() { const m = $("#msgs"); if (m) m.scrollTop = m.scrollHeight; }
 
 /* ================= Events ================= */
 document.addEventListener("click", (e) => {
   const v = e.target.closest("[data-view]");
   if (v) { S.view = v.dataset.view; history.replaceState(null, "", "#" + S.view); render(); return; }
-  const day = e.target.closest("[data-day]");
-  if (day) {
-    const n = Number(day.dataset.day);
-    const set = new Set(S.prefs.runDays || []);
-    set.has(n) ? set.delete(n) : set.add(n);
-    S.prefs.runDays = [...set].sort((a, b) => a - b);
-    day.setAttribute("aria-pressed", String(set.has(n)));
-    return;
-  }
   const open = e.target.closest("[data-open]");
   if (open && !e.target.closest("#drawer")) { S.drawer = { date: open.dataset.open }; render(); return; }
   if (e.target === $("#scrim")) { S.drawer = null; render(); return; }
@@ -1059,38 +946,15 @@ document.addEventListener("click", (e) => {
   else if (a === "stop") { S.busy?.ctl?.abort(); }
   else if (a === "dismiss-sample") { S.sampleErr = null; render(); }
   else if (a === "reload-strava") { if (mcp) loadStrava(true); }
-  else if (a === "generate") {
-    const notes = $("#notes")?.value || "";
-    const days = S.prefs.runDays || [];
-    if (days.length < 2) { S.sampleErr = "Pick at least two running days."; render(); return; }
-    S.sampleErr = null; generateWeek(monday(today()), notes, days);
-  }
-  else if (a === "regen") {
-    if (act.dataset.confirm === "1") {
-      const wk = monday(today()); const old = S.weeks[wk];
-      S.draftNotes = old?.notes || ""; delete S.weeks[wk]; render();
-      if (db && userId) db.collection("data/users/" + userId).doc(docId.week(wk)).delete().catch(() => {}); else lsSave();
-    } else { act.dataset.confirm = "1"; act.textContent = "Tap again to delete this week’s plan and chat"; }
-  }
   else if (a === "analyse") { const r = S.runs.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; analyse(r); } }
-});
-document.addEventListener("submit", (e) => {
-  if (e.target.id !== "chatform") return;
-  e.preventDefault();
-  const input = $("#chatinput"); const text = input.value.trim();
-  if (!text || S.busy) return;
-  input.value = ""; S.sampleErr = null;
-  chat(monday(today()), text);
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && S.drawer) { S.drawer = null; render(); }
-  if (e.key === "Enter" && !e.shiftKey && e.target.id === "chatinput") { e.preventDefault(); $("#chatform").requestSubmit(); }
 });
 document.addEventListener("pointerover", (e) => {
   const g = e.target.closest("[data-tip]"); if (!g) return;
   const tip = g.closest(".chart")?.querySelector(".tip"); if (tip) tip.textContent = g.dataset.tip;
 });
-document.addEventListener("focusin", (e) => { if (e.target.id === "notes") S.draftNotes = e.target.value; });
 window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["week", "calendar", "stats"].includes(v)) { S.view = v; render(); } });
 
 /* ================= Boot ================= */
