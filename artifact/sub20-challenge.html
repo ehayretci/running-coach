@@ -267,6 +267,9 @@ const SHOES = {
   vaporfly: { name: "Nike Vaporfly 4", glyph: "VF", role: "Carbon-plated racer · ≈1 year old" },
   none: { name: "Rest day", glyph: "–", role: "" },
 };
+/** km each pair had before it was added to Strava (Nov 2026): runs from 3 Nov 2025 – 2 Nov 2026,
+ *  under 6 km = Vaporfly, 6 km+ = Vomero, × 1.2 for unlogged running. */
+const SHOE_START_KM = { vaporfly: 241, vomero: 352, cloudmonster: 0 };
 const TYPES = {
   easy: ["Easy", ""], recovery: ["Recovery", ""], long: ["Long", "long"], shakeout: ["Shake-out", ""],
   intervals: ["Intervals", "hard"], tempo: ["Tempo", "hard"], goalpace: ["Goal pace", "hard"], timetrial: ["Time trial", "hard"],
@@ -409,7 +412,11 @@ async function loadGear() {
   try {
     const r = await mcp.callTool(STRAVA, "get_gear", { gear_types: ["Shoe"] }, { cache: { staleTime: 30 * 60e3, gcTime: 6048e5 } });
     const list = (r.payload && r.payload.gear) || [];
-    S.gear = list.map((g) => ({ id: String(g.gear_id?.id ?? g.id ?? ""), name: [g.brand, g.model_name].filter(Boolean).join(" ") || g.name || "Shoe", nick: g.name || "", km: (num(g.distance) ?? 0) / 1000, retired: !!g.retired, key: shoeKey([g.name, g.brand, g.model_name, g.description].join(" ")) }));
+    S.gear = list.map((g) => {
+      const key = shoeKey([g.name, g.brand, g.model_name, g.description].join(" "));
+      const strava = (num(g.distance) ?? 0) / 1000, start = key ? SHOE_START_KM[key] || 0 : 0;
+      return { id: String(g.gear_id?.id ?? g.id ?? ""), name: [g.brand, g.model_name].filter(Boolean).join(" ") || g.name || "Shoe", nick: g.name || "", strava, start, km: strava + start, retired: !!g.retired, key };
+    });
     render();
   } catch (e) { console.warn("gear", e); S.gear = S.gear || null; }
 }
@@ -587,7 +594,7 @@ function context(weekStart, asOf = today()) {
   const sp = S.zones?.sample_race_pace;
   if (sp) L.push(`STRAVA'S OWN 5K ESTIMATE: ${sp.time}${sp.is_estimated ? " (estimated by Strava)" : ""}.`);
   if (pw) L.push(`POWER: median ${pw.ratio.toFixed(1)} W per m/s over ${pw.n} runs → goal pace needs ≈${Math.round(pw.goalW)} W.${pw.base5kW ? ` Baseline 5K averaged ${Math.round(pw.base5kW)} W.` : ""}`);
-  L.push("SHOES (from Strava gear):\n" + ["vomero", "cloudmonster", "vaporfly"].map((k) => { const g = gearFor(k); return `- ${k}: ${SHOES[k].name}, ${g ? `${g.km.toFixed(0)} km total on Strava, ${shoeKmSince(g.id).toFixed(0)} km since ${START}` : "not on Strava — mileage unknown"}`; }).join("\n") + "\nZoomX-type racing foam typically loses responsiveness after ~400–500 km; consider this for the Vaporfly.");
+  L.push("SHOES (from Strava gear):\n" + ["vomero", "cloudmonster", "vaporfly"].map((k) => { const g = gearFor(k); return `- ${k}: ${SHOES[k].name}, ${g ? `≈${g.km.toFixed(0)} km total (${g.start} km estimated before Strava + ${g.strava.toFixed(0)} km logged), ${shoeKmSince(g.id).toFixed(0)} km since ${START}` : "not on Strava — mileage unknown"}`; }).join("\n") + "\nZoomX-type racing foam typically loses responsiveness after ~400–500 km; consider this for the Vaporfly.");
   L.push(z ? `HR ZONES (Strava, from max HR): ${z.map((x) => `Z${x.zone} ${x.min}–${x.max ?? "max"}`).join(", ")}. HR is not recorded on recent runs.` : "HR zones: unknown.");
   L.push("RUNS:");
   const recent = S.runs.filter((r) => r.date >= addDays(asOf, -35) && r.date <= asOf);
@@ -938,7 +945,7 @@ function renderStats() {
 
   // shoes
   const gearKnown = (S.gear || []).filter((g) => !g.retired);
-  h += `<section class="card"><h3>Shoes</h3>${gearKnown.length ? `<div class="tablewrap"><table><thead><tr><th>Shoe</th><th>Use</th><th class="r">Total km</th><th class="r">Since 2 Nov</th></tr></thead><tbody>${gearKnown.map((g) => `<tr><td>${esc(g.name)}${g.nick && g.nick !== g.name ? ` <span class="muted">(${esc(g.nick)})</span>` : ""}</td><td class="muted">${esc(g.key ? SHOES[g.key].role.split(" · ")[0] : "Not one of your three pairs")}</td><td class="r">${g.km.toFixed(0)}${g.key === "vaporfly" && g.km > 400 ? ` <span style="color:var(--warn)">· foam ageing</span>` : ""}</td><td class="r">${shoeKmSince(g.id).toFixed(1)}</td></tr>`).join("")}</tbody></table></div>${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).length ? `<p class="small muted">Not found on Strava: ${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).map((k) => esc(SHOES[k].name)).join(", ")}. Name them with “Vomero”, “Cloudmonster” or “Vaporfly” so they can be matched.</p>` : ""}` : `<p class="small">${S.gear ? "No shoes on your Strava yet." : "Loading shoes from Strava…"}</p><p class="small muted">Add your Vomero Plus, Cloudmonster 3 Hyper and Vaporfly 4 in Strava (Settings → My Gear → Add Shoes, with an estimate of the km already on them), and pick the shoe on each run. The app then tracks mileage and checks the shoe you wore against the plan.</p>`}</section>`;
+  h += `<section class="card"><h3>Shoes</h3>${gearKnown.length ? `<div class="tablewrap"><table><thead><tr><th>Shoe</th><th class="r">Before</th><th class="r">Strava</th><th class="r">Total</th><th class="r">Challenge</th></tr></thead><tbody>${gearKnown.map((g) => `<tr><td style="white-space:normal">${esc(g.key ? SHOES[g.key].name : g.name)}${g.nick && g.nick !== g.name ? ` <span class="muted">(${esc(g.nick)})</span>` : ""}</td><td class="r">${g.start ? "≈" + g.start : "0"}</td><td class="r">${g.strava.toFixed(1)}</td><td class="r"><strong>${g.km.toFixed(0)}</strong>${g.key === "vaporfly" && g.km > 400 ? ` <span style="color:var(--warn)">· foam ageing</span>` : ""}</td><td class="r">${shoeKmSince(g.id).toFixed(1)}</td></tr>`).join("")}</tbody></table></div><p class="small muted">km. “Before” is an estimate from your runs of the past year (under 6 km in the Vaporfly, 6 km+ in the Vomero, ×1.2). “Challenge” counts km since 2 Nov. Tag each new run with its shoe in Strava and the totals count up.</p>${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).length ? `<p class="small muted">Not found on Strava: ${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).map((k) => esc(SHOES[k].name)).join(", ")}. Name them with “Vomero”, “Cloudmonster” or “Vaporfly” so they can be matched.</p>` : ""}` : `<p class="small">${S.gear ? "No shoes on your Strava yet." : "Loading shoes from Strava…"}</p><p class="small muted">Add your Vomero Plus, Cloudmonster 3 Hyper and Vaporfly 4 in Strava (Settings → My Gear → Add Shoes, with an estimate of the km already on them), and pick the shoe on each run. The app then tracks mileage and checks the shoe you wore against the plan.</p>`}</section>`;
 
   // runs table
   const rows = challengeRuns().slice().reverse();
@@ -962,7 +969,7 @@ function renderDrawer() {
   if (s) {
     h += `<section class="card"><div class="row1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(s.type)}<strong>${esc(s.title)}</strong>${s.distanceKm ? `<span class="mono">${esc(s.distanceKm)} km</span>` : ""}</div>
       ${s.details ? `<p>${esc(s.details)}</p>` : ""}${targets(s)}${s.why ? `<p class="muted small">${esc(s.why)}</p>` : ""}
-      ${s.shoe && s.shoe !== "none" ? `<div class="shoe"><span class="glyph">${esc(SHOES[s.shoe].glyph)}</span><div><strong>${esc(SHOES[s.shoe].name)}</strong><div class="small muted">${esc(SHOES[s.shoe].role)}${gearFor(s.shoe) ? ` · ${gearFor(s.shoe).km.toFixed(0)} km on Strava` : ""}</div></div></div>` : ""}
+      ${s.shoe && s.shoe !== "none" ? `<div class="shoe"><span class="glyph">${esc(SHOES[s.shoe].glyph)}</span><div><strong>${esc(SHOES[s.shoe].name)}</strong><div class="small muted">${esc(SHOES[s.shoe].role)}${gearFor(s.shoe) ? ` · ≈${gearFor(s.shoe).km.toFixed(0)} km` : ""}</div></div></div>` : ""}
       ${s.tips?.length ? `<ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</section>`;
   } else if (d === RACE) {
     h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The plan for race week appears when you generate it on Monday 7 December.</p></section>`;
