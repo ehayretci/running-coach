@@ -260,7 +260,7 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
     <nav class="tabs" id="tabs" aria-label="Sections">
       <button type="button" data-view="week">Week</button>
       <button type="button" data-view="calendar">Calendar</button>
-      <button type="button" data-view="stats">Stats</button>
+      <button type="button" data-view="progress">Progress</button>
     </nav>
   </div>
 </header>
@@ -272,7 +272,7 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 <nav class="bottom" id="bottom" aria-label="Sections">
   <button type="button" data-view="week">Week</button>
   <button type="button" data-view="calendar">Calendar</button>
-  <button type="button" data-view="stats">Stats</button>
+  <button type="button" data-view="progress">Progress</button>
 </nav>
 
 <div class="scrim" id="scrim" hidden>
@@ -305,6 +305,8 @@ const TYPES = {
 const SHORT = { easy: "Easy", recovery: "Rec", long: "Long", shakeout: "Shake", intervals: "Int", tempo: "Tempo", goalpace: "Goal", timetrial: "TT", race: "Race", football: "Ball", rest: "Rest", cross: "X" };
 const HARD = ["intervals", "tempo", "goalpace", "timetrial", "race", "football"];
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** Monday's baseline was not all-out: the effort started ~2 km in, in brand-new shoes. */
+const BASELINE_NOTE = "not all-out: you only started pushing ~2 km in, in brand-new shoes, so your true 5K is likely faster";
 const BE_LONG = { Fastest2Mile: 3218.69, Fastest5k: 5000, Fastest10k: 10000 };
 const BE_SHORT = { Fastest1k: 1000, FastestMile: 1609.34 };
 const BE_LABEL = { Fastest400: "400 m", FastestHalfMile: "½ mile", Fastest1k: "1 km", FastestMile: "1 mile", Fastest2Mile: "2 miles", Fastest5k: "5 km", Fastest10k: "10 km" };
@@ -337,7 +339,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 
 /* ================= State ================= */
 const S = {
-  view: ["week", "calendar", "stats"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
+  view: location.hash === "#stats" ? "progress" : ["week", "calendar", "progress"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
   runs: [], perf: {}, zones: null, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {},
   store: null, storeErr: null,
@@ -585,7 +587,7 @@ function context(weekStart, asOf = today()) {
   L.push(`TODAY: ${asOf} (${DAYS[wday(asOf)]}). WEEK: ${weekStart} – ${addDays(weekStart, 6)}.`);
   L.push(`GOAL: 5K under ${fmtT(GOAL_S)} (goal pace ${fmtP(GOAL_PACE)}) on ${RACE} — ${daysBetween(asOf, RACE)} days away.`);
   if (p) {
-    L.push(`BASELINE: ${p.base ? `${fmtT(p.base.s)} 5K on ${START} (“${p.base.run.name}”)` : "none found"}.`);
+    L.push(`BASELINE: ${p.base ? `${fmtT(p.base.s)} 5K on ${START} (“${p.base.run.name}”) — ${BASELINE_NOTE}` : "none found"}.`);
     L.push(`CURRENT FITNESS (calculated from data, VDOT method): VDOT ${p.v.toFixed(1)} → predicted 5K ${fmtT(p.s)}${p.basis ? ` (best effort: ${p.basis.label} in “${p.basis.run.name}” on ${p.basis.run.date})` : ""}. Sub-20 needs VDOT ${GOAL_VDOT.toFixed(1)}.`);
     if (p.ceiling) L.push(`Short-effort ceiling: ${fmtT(p.ceiling.s)} (from ${p.ceiling.basis.label}).`);
     if (p.trend) L.push(`Trend: ${p.trend.slope >= 0 ? "+" : ""}${p.trend.slope.toFixed(2)} VDOT/week over ${p.trend.n} weeks → projects ${fmtT(p.trend.atRace)} on race day.`);
@@ -655,7 +657,8 @@ async function analyse(run) {
   const planned = s ? { type: s.type, title: s.title, distanceKm: s.distanceKm, details: s.details, pace: s.paceMax ? `${fmtP(s.paceMin)}–${fmtP(s.paceMax)}` : null, power: s.powerMax ? `${s.powerMin}–${s.powerMax} W` : null, hr: s.hrMax ? `${s.hrMin}–${s.hrMax}` : null, shoe: s.shoe } : null;
   const rows = s ? sectionRows(run, s) : null;
   const secs = rows ? rows.map((r) => ({ section: r.name, target: r.target, actualPace: r.actual.pace && fmtP(r.actual.pace), actualSec: r.actual.sec && Math.round(r.actual.sec), watts: r.actual.watts && Math.round(r.actual.watts), hr: r.actual.hr && Math.round(r.actual.hr), flags: r.flags })) : null;
-  const prompt = `${COACH}\n\n${context(monday(run.date), run.date)}\n\nREVIEW THIS RUN BRIEFLY.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each"],"improve":["max 2 items, max 12 words each"],"next":"one instruction for the next run, max 15 words"}`;
+  const runCtx = context(monday(run.date), run.date).split("\n").filter((l) => !/^(GOAL|BASELINE|CURRENT FITNESS|Short-effort|Trend|STRAVA'S OWN)/.test(l)).join("\n");
+  const prompt = `${COACH}\n\n${runCtx}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off sub-20 is, or whether the goal is realistic — that lives on the Progress page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
   const ctl = new AbortController();
   S.busy = { kind: "analyse", ctl, runId: run.id }; render();
   try {
@@ -897,13 +900,13 @@ function chartPred(points) {
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="5K-equivalent of your best effort per run">${g}</svg><div class="tip" aria-live="polite"></div></div>`;
 }
 
-function renderStats() {
+function renderProgress() {
   const t = today();
   const p = prediction();
   const pw = powerModel();
   const z = hrZones();
   const left = daysBetween(t, RACE);
-  let h = `<div class="week-head"><div><div class="eyebrow">Stats · data only</div><div class="range">${left} days to go</div></div></div>${banners()}`;
+  let h = `<div class="week-head"><div><div class="eyebrow">Progress · data only</div><div class="range">${left} days to go</div></div></div>${banners()}`;
   if (!p) return h + `<div class="empty">${S.stravaLoading ? `<div class="spinner"></div><p>Reading your Strava runs…</p>` : `<p>No runs found since ${esc(fdate(START))}.</p>`}</div>`;
   const gap = p.s - GOAL_S;
   const base = p.base;
@@ -911,7 +914,7 @@ function renderStats() {
   h += `<section class="hero">
     <div><div class="eyebrow">Predicted 5K today</div><div class="big">${fmtT(p.s)}</div><p class="small muted">From ${esc(p.basis ? `${p.basis.label} in “${p.basis.run.name}”, ${fdate(p.basis.run.date)}` : "your baseline")}. Calculated with the VDOT method.</p></div>
     <div><div class="eyebrow">Goal</div><div class="big goal">19:59</div><p class="small muted">${gap > 0 ? `${Math.round(gap)} s to find · ${(gap / 5).toFixed(1)} s/km faster` : "You’re at goal pace on current data."}</p></div>
-    <div><div class="eyebrow">Baseline · 2 Nov</div><div class="big">${base ? fmtT(base.s) : "–"}</div><p class="small muted">${base ? esc(base.run.name) : "No 5K on 2 Nov"}</p></div>
+    <div><div class="eyebrow">Baseline · 2 Nov</div><div class="big">${base ? fmtT(base.s) : "–"}</div><p class="small muted">${base ? "Sub-maximal: " + esc(BASELINE_NOTE.replace(/^not all-out: /, "")) + "." : "No 5K on 2 Nov"}</p></div>
   </section>`;
   if (base) h += `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="small">Progress from baseline to goal</span><span class="small num muted">${Math.round(prog * 100)}%</span></div><div class="gapbar" role="progressbar" aria-valuenow="${Math.round(prog * 100)}" aria-valuemin="0" aria-valuemax="100"><div style="width:${prog * 100}%"></div></div></div>`;
 
@@ -931,7 +934,7 @@ function renderStats() {
       ${p.trend ? `<dt>Trend (${p.trend.n} weeks)</dt><dd>${p.trend.slope >= 0 ? "+" : ""}${p.trend.slope.toFixed(2)}/week → ${fmtT(p.trend.atRace)}</dd>` : `<dt>Trend</dt><dd class="muted">after 3 weeks</dd>`}
       ${S.zones?.sample_race_pace ? `<dt>Strava’s own estimate</dt><dd>${esc(S.zones.sample_race_pace.time)}</dd>` : ""}
     </dl>
-    <p class="small muted">The prediction uses only your best effort of 2 miles or longer in the last 28 days. Shorter efforts are shown as a ceiling, because short speed overstates 5K endurance.</p></div>`;
+    ${p.basis && p.basis.run.date === START ? `<p class="small">Today’s prediction rests on Monday’s 5K, which was ${esc(BASELINE_NOTE)}. Treat it as a ceiling on how slow you are, not your real level. The checkpoint time trial will give a true number.</p>` : ""}<p class="small muted">The prediction uses only your best effort of 2 miles or longer in the last 28 days. Shorter efforts are shown as a ceiling, because short speed overstates 5K endurance.</p></div>`;
 
   // charts
   const weeks = [];
@@ -1030,7 +1033,7 @@ function render() {
   renderHeader();
   const view = $("#view");
   if (S.stravaLoading && !S.runs.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Strava…</p></div>`;
-  else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : renderStats();
+  else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : renderProgress();
   if (lastView !== S.view) { window.scrollTo(0, 0); lastView = S.view; }
   const scrim = $("#scrim");
   if (S.drawer) { $("#drawer").innerHTML = renderDrawer(); scrim.hidden = false; } else scrim.hidden = true;
@@ -1059,7 +1062,7 @@ document.addEventListener("pointerover", (e) => {
   const g = e.target.closest("[data-tip]"); if (!g) return;
   const tip = g.closest(".chart")?.querySelector(".tip"); if (tip) tip.textContent = g.dataset.tip;
 });
-window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["week", "calendar", "stats"].includes(v)) { S.view = v; render(); } });
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (["week", "calendar", "progress"].includes(v)) { S.view = v; render(); } });
 
 /* ================= Boot ================= */
 render();

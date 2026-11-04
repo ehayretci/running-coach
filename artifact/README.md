@@ -8,6 +8,6 @@ Sub 20 Challenge runs as a claude.ai artifact: https://claude.ai/artifact/Xop3Bf
 - **Claude** (`sample`): run analysis, on the viewer's Claude account. Weekly plans are made in a Claude chat, not on the page.
 - **Storage** (`db`): `weeks/<monday>` holds each week's plan, written by Claude from chat with the ArtifactData tool. `analyses/<runId>` holds run analyses, written by the page.
 
-The views are **Week** (this week's plan, or the runs done so far), **Calendar** (2 Nov to 10 Dec) and **Stats** (data-only 5K prediction).
+The views are **Week** (this week's plan, or the runs done so far), **Calendar** (2 Nov to 10 Dec) and **Progress** (data-only 5K prediction and goal outlook).
 
 The earlier standalone web app (Vite/React) is still in `src/` on `main`. The unfinished v2 of it is on the `wip-external-app-v2` branch.
