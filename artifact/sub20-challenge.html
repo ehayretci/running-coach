@@ -195,6 +195,7 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 .profile svg { height: 34px; }
 .profile.big svg { height: auto; }
 .profile .ax { font-size: 10px; }
+.prof-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
 .profile .tip, .profile .legend { font-family: var(--font-body); font-weight: 400; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .ax { fill: var(--muted); font-size: 10px; font-family: var(--font-body); }
@@ -690,18 +691,24 @@ function busyLine(kind, label) {
 }
 
 /* ---------- Session profile: each section in order, height = pace ---------- */
-const PIECE_COLOR = { easy: "var(--easy)", work: "var(--hard)", stride: "var(--long)", rest: "var(--line)" };
+const PIECE_COLOR = { easy: "var(--easy)", work: "var(--hard)", stride: "var(--long)", rest: "#ffffff" };
 function pieces(s) {
   const out = [];
+  const mk = (kind, part, label) => {
+    if (!part || !Array.isArray(part.pace)) return null;
+    const mp = (part.pace[0] + part.pace[1]) / 2;
+    const km = part.km ?? (part.sec ? part.sec / mp : 0);
+    return { kind, km, sec: part.sec, pace: part.pace, label };
+  };
   for (const g of s.segments || []) {
     if (g.reps && g.work) {
       for (let i = 1; i <= g.reps; i++) {
-        out.push({ kind: g.kind === "strides" ? "stride" : "work", km: g.work.km, pace: g.work.pace, label: `${g.label} ${i}/${g.reps}` });
-        if (g.rest && (i < g.reps || !g.dropLastRest)) out.push({ kind: "rest", km: g.rest.km, pace: g.rest.pace, label: g.rest.label || "Recovery" });
+        out.push(mk(g.kind === "strides" ? "stride" : "work", g.work, `${g.label} ${i}/${g.reps}`));
+        if (g.rest && (i < g.reps || !g.dropLastRest)) out.push(mk("rest", g.rest, g.rest.label || "Recovery"));
       }
     } else if (g.km) out.push({ kind: "easy", km: g.km, pace: g.pace, label: g.label });
   }
-  return out.filter((p) => p.km > 0 && Array.isArray(p.pace));
+  return out.filter((p) => p && p.km > 0);
 }
 function profile(s, big) {
   const ps = pieces(s);
@@ -716,19 +723,20 @@ function profile(s, big) {
   for (const p of ps) {
     const w = (p.km / total) * W, h = hgt(mid(p));
     const pace = p.pace[0] === p.pace[1] ? fmtT(p.pace[0]) : `${fmtT(p.pace[0])}–${fmtT(p.pace[1])}`;
-    const dist = p.km >= 1 ? `${+p.km.toFixed(2)} km` : `${Math.round(p.km * 1000)} m`;
-    g += `<g data-tip="${esc(p.label)} · ${esc(dist)} @ ${esc(pace)}/km"><rect x="${x.toFixed(2)}" y="${T}" width="${Math.max(0.5, w).toFixed(2)}" height="${H - T - B}" fill="transparent"/><rect x="${(x + 0.5).toFixed(2)}" y="${(H - B - h).toFixed(2)}" width="${Math.max(0.5, w - 1).toFixed(2)}" height="${h.toFixed(2)}" rx="${big ? 2 : 1}" fill="${PIECE_COLOR[p.kind]}"/></g>`;
+    const dist = p.sec ? (p.sec >= 60 && p.sec % 60 === 0 ? `${p.sec / 60} min` : `${p.sec} s`) : p.km >= 1 ? `${+p.km.toFixed(2)} km` : `${Math.round(p.km * 1000)} m`;
+    g += `<g data-tip="${esc(p.label)} · ${esc(dist)}${p.kind === "rest" && p.pace[0] >= 600 ? "" : ` @ ${esc(pace)}/km`}"><rect x="${x.toFixed(2)}" y="${T}" width="${Math.max(0.5, w).toFixed(2)}" height="${H - T - B}" fill="transparent"/><rect x="${(x + 0.5).toFixed(2)}" y="${(H - B - h).toFixed(2)}" width="${Math.max(0.5, w - 1).toFixed(2)}" height="${h.toFixed(2)}" rx="${big ? 2 : 1}" fill="${PIECE_COLOR[p.kind]}"${p.kind === "rest" ? ' stroke="var(--fg-2)" stroke-width="1"' : ""}/></g>`;
     x += w;
   }
   if (big) {
     const work = ps.filter((p) => p.kind === "work");
     const refs = [...new Set([work.length ? mid(work[0]) : null, mid(ps.find((p) => p.kind === "easy") || ps[0])].filter(Boolean).map(Math.round))];
     g = refs.map((r) => `<line class="grid" x1="0" x2="${W}" y1="${(H - B - hgt(r)).toFixed(1)}" y2="${(H - B - hgt(r)).toFixed(1)}" stroke-dasharray="3 3"/><text class="ax" x="${W}" y="${(H - B - hgt(r) - 3).toFixed(1)}" text-anchor="end">${fmtT(r)}/km</text>`).join("") + g;
-    g += `<text class="ax" x="0" y="${H - 4}">0</text><text class="ax" x="${W}" y="${H - 4}" text-anchor="end">${+(s.distanceKm || total).toFixed(1)} km</text>`;
+    g += `<text class="ax" x="0" y="${H - 4}">Start</text><text class="ax" x="${W}" y="${H - 4}" text-anchor="end">Finish</text>`;
   }
   const kinds = [...new Set(ps.map((p) => p.kind))];
-  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}</div>` : "";
-  return `<div class="chart profile${big ? " big" : ""}"><svg viewBox="0 0 ${W} ${H}" ${big ? "" : 'preserveAspectRatio="none"'} role="img" aria-label="Session sections in order">${g}</svg>${big ? `<div class="tip" aria-live="polite">Hover or tap a section for its pace.</div>` : ""}${legend}</div>`;
+  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}${k === "rest" ? ";border:1px solid var(--fg-2)" : ""}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}</div>` : "";
+  const head = big ? `<div class="prof-head"><span class="eyebrow">Sections</span><span><span class="muted small">Total</span> <strong class="mid">${esc(+(s.distanceKm || total).toFixed(1))} km</strong></span></div>` : "";
+  return `<div class="chart profile${big ? " big" : ""}">${head}<svg viewBox="0 0 ${W} ${H}" ${big ? "" : 'preserveAspectRatio="none"'} role="img" aria-label="Session sections in order">${g}</svg>${big ? `<div class="tip" aria-live="polite">Hover or tap a section for its pace.</div>` : ""}${legend}</div>`;
 }
 
 function renderWeek() {
@@ -761,15 +769,15 @@ function dayRow(d, s) {
   const runLine = runs.map((r) => `<div class="done-line">✓ ${r.km.toFixed(2)} km · ${fmtT(r.moving)} · ${fmtP(r.pace)}${S.perf[r.id]?.watts ? " · " + Math.round(S.perf[r.id].watts) + " W" : ""}</div>`).join("");
   if (!s) {
     if (!runs.length) return "";
-    return `<button type="button" class="day done${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("run")}<span class="title">${esc(runs[0].name)}</span><span class="km num">${runs[0].km.toFixed(1)}</span></div>${runLine}</div></button>`;
+    return `<button type="button" class="day done${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("run")}<span class="title">${esc(runs[0].name)}</span><span class="km num">${runs[0].km.toFixed(1)} km</span></div>${runLine}</div></button>`;
   }
   const rest = s.type === "rest" || s.type === "cross";
   const status = runs.length ? `<span class="status done">Done</span>` : !rest && d < t ? `<span class="status missed">Missed</span>` : "";
   const state = runs.length ? " done" : !rest && d < t ? " missed" : rest ? " rest" : "";
   return `<button type="button" class="day${isToday ? " today" : ""}${state}" data-open="${esc(d)}">${dn}<div class="body">
-    <div class="row1">${tag(s.type)}<span class="title">${esc(s.title)}</span>${status}${s.distanceKm ? `<span class="km num">${esc(s.distanceKm)}</span>` : ""}</div>
+    <div class="row1">${tag(s.type)}<span class="title">${esc(s.title)}</span>${status}${s.distanceKm ? `<span class="km num">${esc(s.distanceKm)} km</span>` : ""}</div>
     ${s.details && !rest ? `<div class="details">${esc(s.details)}</div>` : ""}
-    ${rest ? "" : profile(s, false) + targets(s)}${runLine}</div></button>`;
+    ${rest ? "" : targets(s)}${runLine}</div></button>`;
 }
 
 function renderCalendar() {

@@ -47,7 +47,7 @@
    "type": "easy",
    "title": "Easy run + strides",
    "distanceKm": 6,
-   "details": "6 km easy, then 6 × 20 s strides with walk-back recovery.",
+   "details": "6 km easy, then 6 × 20 s strides with 60 s walk-back.",
    "paceMin": 325,
    "paceMax": 350,
    "powerMin": 275,
@@ -74,14 +74,14 @@
      "label": "Stride",
      "reps": 6,
      "work": {
-      "km": 0.1,
+      "sec": 20,
       "pace": [
        205,
        220
       ]
      },
      "rest": {
-      "km": 0.06,
+      "sec": 60,
       "pace": [
        720,
        720
@@ -98,7 +98,7 @@
    "type": "intervals",
    "title": "Intervals: 6 × 800 m",
    "distanceKm": 9.5,
-   "details": "2 km warm-up + 4 strides · 6 × 800 m @ 4:06–4:10/km (3:17–3:20 per rep), 400 m jog · 1.5 km cool-down.",
+   "details": "2 km warm-up + 4 × 20 s strides · 6 × 800 m @ 4:06–4:10/km (3:17–3:20 per rep), 2 min easy jog between · 1.5 km cool-down.",
    "paceMin": 246,
    "paceMax": 250,
    "powerMin": 385,
@@ -126,14 +126,14 @@
      "label": "Stride",
      "reps": 4,
      "work": {
-      "km": 0.1,
+      "sec": 20,
       "pace": [
-       210,
-       225
+       205,
+       220
       ]
      },
      "rest": {
-      "km": 0.06,
+      "sec": 60,
       "pace": [
        720,
        720
@@ -153,12 +153,12 @@
       ]
      },
      "rest": {
-      "km": 0.4,
+      "sec": 120,
       "pace": [
        380,
        420
       ],
-      "label": "400 m jog"
+      "label": "Easy jog"
      },
      "dropLastRest": true
     },
