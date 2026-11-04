@@ -4,7 +4,7 @@ Sub 20 Challenge runs as a claude.ai artifact: https://claude.ai/artifact/Xop3Bf
 
 `sub20-challenge.html` is the page source. Publishing it gives the page three runtime capabilities:
 
-- **Strava connector** (`mcp`): `list_activities`, `get_activity_performance`, `get_athlete_zones` and `get_gear` (shoe mileage), read with the viewer's own Strava connection.
+- **Strava connector** (`mcp`): `list_activities`, `get_activity_performance`, `get_athlete_zones` and `get_activity_streams` (plan-vs-actual graph), read with the viewer's own Strava connection.
 - **Claude** (`sample`): run analysis, on the viewer's Claude account. Weekly plans are made in a Claude chat, not on the page.
 - **Storage** (`db`): `weeks/<monday>` holds each week's plan, written by Claude from chat with the ArtifactData tool. `analyses/<runId>` holds run analyses, written by the page.
 

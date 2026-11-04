@@ -195,6 +195,23 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 .profile svg { height: 34px; }
 .profile.big svg { height: auto; }
 .profile .ax { font-size: 10px; }
+.sections { display: flex; flex-direction: column; gap: 8px; }
+.sec { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.sec:last-child { border-bottom: 0; }
+.sec .sw { margin-top: 4px; }
+.sec-name { font-weight: 600; }
+.sec-line { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.flag { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.flag.ok { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.flag.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); margin-left: 4px; }
+.agrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.alist ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.alist.good .eyebrow { color: var(--good); }
+.alist.warn .eyebrow { color: var(--warn); }
+.next-run { border-left: 3px solid var(--accent); padding-left: 10px; }
+.next-run .eyebrow { margin-right: 6px; }
+.prof-km { display: inline-flex; gap: 12px; font-variant-numeric: tabular-nums; }
+.prof-km strong { font-family: var(--font-display); font-size: 1.25rem; }
 .prof-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
 .profile .tip, .profile .legend { font-family: var(--font-body); font-weight: 400; }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
@@ -321,7 +338,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 /* ================= State ================= */
 const S = {
   view: ["week", "calendar", "stats"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
-  runs: [], perf: {}, zones: null, gear: null, stravaErr: null, stravaLoading: true,
+  runs: [], perf: {}, zones: null, streams: {}, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
@@ -348,7 +365,7 @@ async function initStore() {
   const onErr = (e) => { clearTimeout(timer); S.storeErr = "Saved plans aren’t available in this view (" + e.code + ")."; render(); };
   db.collection("weeks").onSnapshot((snap) => {
     const weeks = {};
-    for (const doc of snap.docs) { const b = doc.data(); if (b && Array.isArray(b.sessions)) weeks[doc.id] = b; }
+    for (const doc of snap.docs) { const b = doc.data(); if (b && Array.isArray(b.sessions)) weeks[doc.id] = { ...b, sessions: b.sessions.map((x) => ({ ...x, distanceKm: planKm(x) })) }; }
     S.weeks = weeks; if (!snap.metadata.fromCache) { got |= 1; if (got === 3) { clearTimeout(timer); S.storeErr = null; } }
     S.store = "ready"; render();
   }, onErr);
@@ -380,7 +397,7 @@ function mapPerf(p) {
   const laps = (p.laps || []).map((l) => ({
     m: num(l.distance) ?? 0, t: num(l.moving_time) ?? num(l.elapsed_time) ?? 0, speed: num(l.avg_speed),
     watts: num(l.avg_watts), cad: num(l.avg_cadence) ? l.avg_cadence * 2 : undefined,
-    hr: num(l.average_heartrate) ?? num(l.avg_heartrate), elev: num(l.elevation_gain),
+    hr: num(l.avg_hr) ?? num(l.average_heartrate) ?? num(l.avg_heartrate), maxHr: num(l.max_hr), elev: num(l.elevation_gain),
   }));
   return { hasHr: !!p.has_heartrate, avgHr, maxHr, watts: num(p.average_watts), rpe: num(p.perceived_exertion), best, laps };
 }
@@ -393,7 +410,7 @@ async function loadStrava(refresh = false) {
     const list = (res.payload && res.payload.activities) || [];
     S.runs = list.filter((a) => RUN_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
     S.stravaLoading = false; render();
-    await Promise.all([loadZones(), loadGear()]);
+    await loadZones();
     await loadPerfs();
   } catch (e) {
     S.stravaLoading = false;
@@ -407,30 +424,27 @@ async function loadZones() {
     S.zones = r.payload || null; render();
   } catch (e) { console.warn("zones", e); }
 }
-/** Your shoes from Strava (Settings → My Gear), matched to the three pairs by name */
-async function loadGear() {
-  try {
-    const r = await mcp.callTool(STRAVA, "get_gear", { gear_types: ["Shoe"] }, { cache: { staleTime: 0, gcTime: 6048e5, refresh: true } });
-    const list = (r.payload && r.payload.gear) || [];
-    S.gear = list.map((g) => {
-      const key = shoeKey([g.name, g.brand, g.model_name, g.description].join(" "));
-      const strava = (num(g.total_distance) ?? num(g.distance) ?? 0) / 1000, start = key ? SHOE_START_KM[key] || 0 : 0;
-      return { id: String(g.gear_id?.id ?? g.id ?? ""), name: [g.brand, g.model_name].filter(Boolean).join(" ") || g.name || "Shoe", nick: g.name || "", strava, start, km: strava + start, retired: !!g.retired, key };
-    });
-    render();
-  } catch (e) { console.warn("gear", e); S.gear = S.gear || null; }
+/** Per-second pace for the plan-vs-actual graph, only when laps don't line up with the plan */
+async function loadStreamsFor(date) {
+  const s = S.weeks[monday(date)]?.sessions?.find((x) => x.date === date);
+  for (const r of runsOn(date)) {
+    if (!s || S.streams[r.id] || matchLaps(r, s) || !pieces(s).length || !mcp) continue;
+    try {
+      const res = await mcp.callTool(STRAVA, "get_activity_streams", { activity_id: r.id, streams: ["distance", "velocity_smooth"], resolution: 200 }, { cache: { staleTime: 6048e5, gcTime: 6048e5 } });
+      if (res.payload && Array.isArray(res.payload.distance)) { S.streams[r.id] = res.payload; render(); }
+    } catch (e) { console.warn("streams", e); }
+  }
 }
-function shoeKey(text) {
-  const t = String(text || "").toLowerCase();
-  if (t.includes("vaporfly")) return "vaporfly";
-  if (t.includes("vomero")) return "vomero";
-  if (t.includes("cloudmonster") || t.includes("monster")) return "cloudmonster";
-  return null;
+/** Shoe per run = the shoe the plan picked for that day (you run in the suggested pair). */
+function shoeOf(run) { const s = S.weeks[monday(run.date)]?.sessions?.find((x) => x.date === run.date); return s && SHOES[s.shoe] && s.shoe !== "none" ? s.shoe : null; }
+function shoeKm() {
+  const out = {};
+  for (const k of ["vomero", "cloudmonster", "vaporfly"]) out[k] = { start: SHOE_START_KM[k] || 0, challenge: 0 };
+  let untracked = 0;
+  for (const r of challengeRuns()) { const k = shoeOf(r); if (k) out[k].challenge += r.km; else untracked += r.km; }
+  for (const k in out) out[k].total = out[k].start + out[k].challenge;
+  return { shoes: out, untracked };
 }
-const gearFor = (key) => (S.gear || []).find((g) => g.key === key && !g.retired);
-const gearById = (id) => (S.gear || []).find((g) => g.id === String(id));
-/** km run in each shoe since the challenge started, from runs tagged on Strava */
-function shoeKmSince(id, from = START) { return S.runs.filter((r) => r.gear === String(id) && r.date >= from).reduce((a, r) => a + r.km, 0); }
 async function loadPerfs() {
   const need = S.runs.filter((r) => !S.perf[r.id]);
   let i = 0;
@@ -592,7 +606,7 @@ function context(weekStart, asOf = today()) {
   const sp = S.zones?.sample_race_pace;
   if (sp) L.push(`STRAVA'S OWN 5K ESTIMATE: ${sp.time}${sp.is_estimated ? " (estimated by Strava)" : ""}.`);
   if (pw) L.push(`POWER: median ${pw.ratio.toFixed(1)} W per m/s over ${pw.n} runs → goal pace needs ≈${Math.round(pw.goalW)} W.${pw.base5kW ? ` Baseline 5K averaged ${Math.round(pw.base5kW)} W.` : ""}`);
-  L.push("SHOES (from Strava gear):\n" + ["vomero", "cloudmonster", "vaporfly"].map((k) => { const g = gearFor(k); return `- ${k}: ${SHOES[k].name}, ${g ? `≈${g.km.toFixed(0)} km total (${g.start} km estimated before Strava + ${g.strava.toFixed(0)} km logged), ${shoeKmSince(g.id).toFixed(0)} km since ${START}` : "not on Strava — mileage unknown"}`; }).join("\n") + "\nZoomX-type racing foam typically loses responsiveness after ~400–500 km; consider this for the Vaporfly.");
+  { const sk = shoeKm().shoes; L.push("SHOES (km = estimate before 2 Nov + runs since, each run assumed in the shoe its plan picked):\n" + Object.entries(sk).map(([k, v]) => `- ${k}: ${SHOES[k].name}, ≈${v.total.toFixed(0)} km`).join("\n")); }
   L.push(z ? `HR ZONES (Strava, from max HR): ${z.map((x) => `Z${x.zone} ${x.min}–${x.max ?? "max"}`).join(", ")}. HR is not recorded on recent runs.` : "HR zones: unknown.");
   L.push("RUNS:");
   const recent = S.runs.filter((r) => r.date >= addDays(asOf, -35) && r.date <= asOf);
@@ -605,7 +619,7 @@ function context(weekStart, asOf = today()) {
     if (r.cadence) line += `, ${Math.round(r.cadence)} spm`;
     if (r.elev) line += `, +${Math.round(r.elev)} m`;
     if (r.weather?.temperature != null) line += `, ${Math.round(r.weather.temperature)}°C`;
-    if (r.gear && gearById(r.gear)) line += `, shoe ${gearById(r.gear).name}`;
+    if (shoeOf(r)) line += `, shoe ${SHOES[shoeOf(r)].name}`;
     if (pf?.best?.Fastest5k) line += `, best 5K ${fmtT(pf.best.Fastest5k)}`;
     if (pf?.best?.Fastest1k) line += `, best 1K ${fmtT(pf.best.Fastest1k)}`;
     if (planned) line += ` | planned: ${planned.title} (${planned.distanceKm} km)`;
@@ -650,15 +664,17 @@ async function analyse(run) {
     laps: pf?.laps?.map((l) => ({ m: Math.round(l.m), pace: fmtP(l.t / (l.m / 1000)), watts: l.watts && Math.round(l.watts), spm: l.cad && Math.round(l.cad), hr: l.hr && Math.round(l.hr) })),
   };
   const planned = s ? { type: s.type, title: s.title, distanceKm: s.distanceKm, details: s.details, pace: s.paceMax ? `${fmtP(s.paceMin)}–${fmtP(s.paceMax)}` : null, power: s.powerMax ? `${s.powerMin}–${s.powerMax} W` : null, hr: s.hrMax ? `${s.hrMin}–${s.hrMax}` : null, shoe: s.shoe } : null;
-  const prompt = `${COACH}\n\n${context(monday(run.date), run.date)}\n\nANALYSE THIS RUN.\nPLANNED SESSION: ${planned ? JSON.stringify(planned) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}\n\nCompare what was done against the plan and the sub-20 goal, with specific numbers (pace, power, splits consistency, cadence; HR only if recorded — otherwise say HR wasn't recorded and use power as the effort measure). Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"one sentence","vsTarget":"actual vs planned in 2–3 sentences","effort":"what power/HR/cadence say about effort and fitness, 2–3 sentences","analysis":"2–3 short paragraphs separated by blank lines: what went well, what didn't, what it means for sub-20","nextTime":["2–4 concrete suggestions for upcoming runs"]}`;
+  const rows = s ? sectionRows(run, s) : null;
+  const secs = rows ? rows.map((r) => ({ section: r.name, target: r.target, actualPace: r.actual.pace && fmtP(r.actual.pace), actualSec: r.actual.sec && Math.round(r.actual.sec), watts: r.actual.watts && Math.round(r.actual.watts), hr: r.actual.hr && Math.round(r.actual.hr), flags: r.flags })) : null;
+  const prompt = `${COACH}\n\n${context(monday(run.date), run.date)}\n\nREVIEW THIS RUN BRIEFLY.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each"],"improve":["max 2 items, max 12 words each"],"next":"one instruction for the next run, max 15 words"}`;
   const ctl = new AbortController();
   S.busy = { kind: "analyse", ctl, runId: run.id }; render();
   try {
     const out = await S.sample.json(prompt, { cache: false, signal: ctl.signal });
     S.analyses[run.id] = {
       verdict: ["nailed", "good", "off-target", "unplanned"].includes(out?.verdict) ? out.verdict : (s ? "good" : "unplanned"),
-      headline: String(out?.headline || ""), vsTarget: String(out?.vsTarget || ""), effort: String(out?.effort || ""), analysis: String(out?.analysis || ""),
-      nextTime: Array.isArray(out?.nextTime) ? out.nextTime.map(String) : [], at: Date.now(),
+      headline: String(out?.headline || ""), good: Array.isArray(out?.good) ? out.good.map(String).slice(0, 2) : [], improve: Array.isArray(out?.improve) ? out.improve.map(String).slice(0, 2) : [],
+      next: String(out?.next || ""), at: Date.now(),
     };
     S.busy = null; render();
     await saveAnalysis(run.id);
@@ -692,6 +708,8 @@ function busyLine(kind, label) {
 
 /* ---------- Session profile: each section in order, height = pace ---------- */
 const PIECE_COLOR = { easy: "var(--easy)", work: "var(--hard)", stride: "var(--long)", rest: "#ffffff" };
+/** Planned distance = sum of every section, strides and walk/jog recoveries included */
+function planKm(s) { const ps = pieces(s); return ps.length ? Math.round(ps.reduce((a, p) => a + p.km, 0) * 10) / 10 : (s.distanceKm || 0); }
 function pieces(s) {
   const out = [];
   const mk = (kind, part, label) => {
@@ -700,33 +718,98 @@ function pieces(s) {
     const km = part.km ?? (part.sec ? part.sec / mp : 0);
     return { kind, km, sec: part.sec, pace: part.pace, label };
   };
-  for (const g of s.segments || []) {
+  (s.segments || []).forEach((g, gi) => {
+    const tagG = (p) => p && Object.assign(p, { grp: gi, glabel: g.label });
     if (g.reps && g.work) {
       for (let i = 1; i <= g.reps; i++) {
-        out.push(mk(g.kind === "strides" ? "stride" : "work", g.work, `${g.label} ${i}/${g.reps}`));
-        if (g.rest && (i < g.reps || !g.dropLastRest)) out.push(mk("rest", g.rest, g.rest.label || "Recovery"));
+        out.push(tagG(mk(g.kind === "strides" ? "stride" : "work", g.work, `${g.label} ${i}/${g.reps}`)));
+        if (g.rest && (i < g.reps || !g.dropLastRest)) out.push(tagG(mk("rest", g.rest, g.rest.label || "Recovery")));
       }
-    } else if (g.km) out.push({ kind: "easy", km: g.km, pace: g.pace, label: g.label });
-  }
+    } else if (g.km) out.push(tagG({ kind: "easy", km: g.km, pace: g.pace, label: g.label }));
+  });
   return out.filter((p) => p && p.km > 0);
 }
-function profile(s, big) {
+/** Pair the run's laps with the plan's sections (works when you lap each section) */
+function matchLaps(run, s) {
+  const ps = pieces(s), pf = S.perf[run.id];
+  if (!ps.length || !pf?.laps?.length) return null;
+  const laps = pf.laps.map((l) => ({ ...l }));
+  while (laps.length > ps.length && laps[laps.length - 1].m < 80) { const l = laps.pop(), q = laps[laps.length - 1]; q.m += l.m; q.t += l.t; }
+  if (laps.length !== ps.length) return null;
+  return ps.map((p, i) => ({ ...p, lap: laps[i] }));
+}
+const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : undefined);
+function sectionRows(run, s) {
+  const m = matchLaps(run, s);
+  if (!m) return null;
+  const sMid = s.paceMax ? (s.paceMin + s.paceMax) / 2 : null;
+  const rows = [];
+  for (const gi of [...new Set(m.map((p) => p.grp))]) {
+    const items = m.filter((p) => p.grp === gi);
+    for (const part of ["main", "rest"]) {
+      const ps = items.filter((p) => (part === "rest") === (p.kind === "rest"));
+      if (!ps.length) continue;
+      const first = ps[0], n = ps.length;
+      const dist = (p) => (p.sec ? (p.sec % 60 === 0 && p.sec >= 60 ? `${p.sec / 60} min` : `${p.sec} s`) : p.km >= 1 ? `${+p.km.toFixed(2)} km` : `${Math.round(p.km * 1000)} m`);
+      const name = part === "rest" ? `${first.label} ${dist(first)}${n > 1 ? ` × ${n}` : ""}` : n > 1 ? `${first.glabel.replace(/ rep$/, "")} ${n} × ${dist(first)}` : `${first.glabel} ${dist(first)}`;
+      const m_ = ps.reduce((a, p) => a + p.lap.m, 0), t_ = ps.reduce((a, p) => a + p.lap.t, 0);
+      const pace = m_ ? t_ / (m_ / 1000) : undefined;
+      const watts = avg(ps.map((p) => p.lap.watts).filter(Boolean)), hr = avg(ps.map((p) => p.lap.hr).filter(Boolean));
+      const isMain = part === "main" && sMid != null && Math.abs((first.pace[0] + first.pace[1]) / 2 - sMid) < 12;
+      const row = { name, kind: first.kind, n, target: {}, actual: { pace, watts, hr, sec: first.sec ? avg(ps.map((p) => p.lap.t)) : undefined, km: m_ / 1000 }, flags: [] };
+      if (part === "rest") { row.target.sec = first.sec; if (first.sec && Math.abs(row.actual.sec - first.sec) > 10) row.flags.push(row.actual.sec > first.sec ? "Long" : "Short"); }
+      else {
+        row.target.pace = first.pace; if (first.sec) row.target.sec = first.sec;
+        if (pace && pace < first.pace[0] - 5) row.flags.push("Fast"); else if (pace && pace > first.pace[1] + 5) row.flags.push("Slow");
+        if (isMain) {
+          if (s.powerMax) { row.target.watts = [s.powerMin, s.powerMax]; }
+          if (s.hrMax) { row.target.hr = [s.hrMin, s.hrMax]; if (hr && hr > s.hrMax + 3) row.flags.push("HR high"); }
+        }
+      }
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+function sectionTable(rows) {
+  const range = (r, f) => (r ? (r[0] === r[1] ? f(r[0]) : `${f(r[0])}–${f(r[1])}`) : "");
+  const tgt = (r) => [r.target.pace ? range(r.target.pace, fmtT) + "/km" : r.target.sec ? `${r.target.sec} s` : "", r.target.watts ? range(r.target.watts, String) + " W" : "", r.target.hr ? range(r.target.hr, String) + " bpm" : ""].filter(Boolean).join(" · ");
+  const act = (r) => [r.kind === "rest" ? (r.actual.sec ? `${Math.round(r.actual.sec)} s` : "") : r.actual.pace ? fmtT(r.actual.pace) + "/km" : "", r.kind !== "rest" && r.actual.watts ? Math.round(r.actual.watts) + " W" : "", r.kind !== "rest" && r.actual.hr ? Math.round(r.actual.hr) + " bpm" : ""].filter(Boolean).join(" · ");
+  return `<div class="sections">${rows.map((r) => `<div class="sec"><span class="sw" style="background:${PIECE_COLOR[r.kind]}${r.kind === "rest" ? ";border:1px solid var(--fg-2)" : ""}"></span><div class="sec-body"><div class="sec-name">${esc(r.name)}</div><div class="sec-line"><span class="muted">Target</span> ${esc(tgt(r) || "–")}</div><div class="sec-line"><span class="muted">Actual</span> <b>${esc(act(r) || "–")}</b></div></div>${r.flags.length ? r.flags.map((f) => `<span class="flag warn">${esc(f)}</span>`).join("") : `<span class="flag ok">On target</span>`}</div>`).join("")}</div>`;
+}
+
+function profile(s, big, run) {
   const ps = pieces(s);
   if (!ps.length) return "";
   const W = big ? 360 : 600, H = big ? 130 : 34, B = big ? 18 : 0, T = big ? 14 : 1;
-  const total = ps.reduce((a, p) => a + p.km, 0);
   const mid = (p) => (p.pace[0] + p.pace[1]) / 2;
+  const dur = (p) => p.sec || p.km * mid(p); // sections are sized by time
+  const total = ps.reduce((a, p) => a + p.km, 0), totalT = ps.reduce((a, p) => a + dur(p), 0);
   // one fixed scale for every session: 9:00/km at the bottom, 3:30/km at the top
   const floor = 540, top = 210;
   const hgt = (pace) => { const sp = 1 / Math.min(Math.max(pace, top), floor); return Math.max(2, ((sp - 1 / floor) / (1 / top - 1 / floor)) * (H - T - B)); };
   let x = 0, g = "";
-  for (const p of ps) {
-    const w = (p.km / total) * W, h = hgt(mid(p));
+  const matched = run ? matchLaps(run, s) : null;
+  const actualPath = [];
+  for (const [idx, p] of ps.entries()) {
+    const w = (dur(p) / totalT) * W, h = hgt(mid(p));
     const pace = p.pace[0] === p.pace[1] ? fmtT(p.pace[0]) : `${fmtT(p.pace[0])}–${fmtT(p.pace[1])}`;
     const dist = p.sec ? (p.sec >= 60 && p.sec % 60 === 0 ? `${p.sec / 60} min` : `${p.sec} s`) : p.km >= 1 ? `${+p.km.toFixed(2)} km` : `${Math.round(p.km * 1000)} m`;
     g += `<g data-tip="${esc(p.label)} · ${esc(dist)}${p.kind === "rest" && p.pace[0] >= 600 ? "" : ` @ ${esc(pace)}/km`}"><rect x="${x.toFixed(2)}" y="${T}" width="${Math.max(0.5, w).toFixed(2)}" height="${H - T - B}" fill="transparent"/><rect x="${(x + 0.5).toFixed(2)}" y="${(H - B - h).toFixed(2)}" width="${Math.max(0.5, w - 1).toFixed(2)}" height="${h.toFixed(2)}" rx="${big ? 2 : 1}" fill="${PIECE_COLOR[p.kind]}"${p.kind === "rest" ? ' stroke="var(--fg-2)" stroke-width="1"' : ""}/></g>`;
+    if (matched) { const l = matched[idx].lap; const ap = l.m ? l.t / (l.m / 1000) : floor; const yy = (H - B - hgt(ap)).toFixed(1); actualPath.push(`${x.toFixed(1)},${yy}`, `${(x + w).toFixed(1)},${yy}`); }
     x += w;
   }
+  if (run && !matched && S.streams[run.id]) {
+    // no lap match: draw the run's pace by distance, scaled to the planned length
+    const st = S.streams[run.id], dist = st.distance || [], vel = st.velocity_smooth || [];
+    const runKm = (dist[dist.length - 1] || 0) / 1000;
+    for (let i = 0; i < dist.length; i++) {
+      const w5 = vel.slice(Math.max(0, i - 2), i + 3).filter((v) => v > 0.3);
+      const v = w5.length ? w5.reduce((a, b) => a + b, 0) / w5.length : 0.3;
+      actualPath.push(`${((dist[i] / 1000 / Math.max(runKm, total)) * W).toFixed(1)},${(H - B - hgt(1000 / v)).toFixed(1)}`);
+    }
+  }
+  if (actualPath.length) g += `<polyline points="${actualPath.join(" ")}" fill="none" stroke="var(--fg)" stroke-width="${big ? 2 : 1.5}" stroke-linejoin="round"/>`;
   if (big) {
     const work = ps.filter((p) => p.kind === "work");
     const refs = [...new Set([work.length ? mid(work[0]) : null, mid(ps.find((p) => p.kind === "easy") || ps[0])].filter(Boolean).map(Math.round))];
@@ -734,8 +817,8 @@ function profile(s, big) {
     g += `<text class="ax" x="0" y="${H - 4}">Start</text><text class="ax" x="${W}" y="${H - 4}" text-anchor="end">Finish</text>`;
   }
   const kinds = [...new Set(ps.map((p) => p.kind))];
-  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}${k === "rest" ? ";border:1px solid var(--fg-2)" : ""}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}</div>` : "";
-  const head = big ? `<div class="prof-head"><span class="eyebrow">Sections</span><span><span class="muted small">Total</span> <strong class="mid">${esc(+(s.distanceKm || total).toFixed(1))} km</strong></span></div>` : "";
+  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}${k === "rest" ? ";border:1px solid var(--fg-2)" : ""}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}${actualPath.length ? `<span><i class="sw" style="height:3px;background:var(--fg);border-radius:0"></i>Your pace</span>` : ""}</div>` : "";
+  const head = big ? `<div class="prof-head"><span class="eyebrow">${run ? "Plan vs actual" : "Sections"}</span><span class="prof-km"><span><span class="muted small">Planned</span> <strong>${esc(planKm(s).toFixed(1))} km</strong></span>${run ? `<span><span class="muted small">Ran</span> <strong>${run.km.toFixed(2)} km</strong></span>` : ""}</span></div>` : "";
   return `<div class="chart profile${big ? " big" : ""}">${head}<svg viewBox="0 0 ${W} ${H}" ${big ? "" : 'preserveAspectRatio="none"'} role="img" aria-label="Session sections in order">${g}</svg>${big ? `<div class="tip" aria-live="polite">Hover or tap a section for its pace.</div>` : ""}${legend}</div>`;
 }
 
@@ -900,9 +983,9 @@ function renderStats() {
       ${z ? z.map((x) => `<dt>HR zone ${x.zone}</dt><dd>${x.min}${x.max ? "–" + x.max : "+"} bpm</dd>`).join("") : ""}
     </dl><p class="small muted">${challengeRuns().some((r) => S.perf[r.id]?.hasHr) ? "Heart rate is being recorded." : "Your recent runs have no heart-rate data, so power is the effort measure. HR targets assume a strap or watch."}</p></section></div>`;
 
-  // shoes
-  const gearKnown = (S.gear || []).filter((g) => !g.retired);
-  h += `<section class="card"><h3>Shoes</h3>${gearKnown.length ? `<div class="tablewrap"><table><thead><tr><th>Shoe</th><th class="r">Before</th><th class="r">Strava</th><th class="r">Total</th><th class="r">Challenge</th></tr></thead><tbody>${gearKnown.map((g) => `<tr><td style="white-space:normal">${esc(g.key ? SHOES[g.key].name : g.name)}${g.nick && g.nick !== g.name ? ` <span class="muted">(${esc(g.nick)})</span>` : ""}</td><td class="r">${g.start ? "≈" + g.start : "0"}</td><td class="r">${g.strava.toFixed(1)}</td><td class="r"><strong>${g.km.toFixed(0)}</strong>${g.key === "vaporfly" && g.km > 400 ? ` <span style="color:var(--warn)">· foam ageing</span>` : ""}</td><td class="r">${shoeKmSince(g.id).toFixed(1)}</td></tr>`).join("")}</tbody></table></div><p class="small muted">km. “Before” is an estimate from your runs of the past year (under 6 km in the Vaporfly, 6 km+ in the Vomero, ×1.2). “Challenge” counts km since 2 Nov. Tag each new run with its shoe in Strava and the totals count up.</p>${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).length ? `<p class="small muted">Not found on Strava: ${["vomero", "cloudmonster", "vaporfly"].filter((k) => !gearFor(k)).map((k) => esc(SHOES[k].name)).join(", ")}. Name them with “Vomero”, “Cloudmonster” or “Vaporfly” so they can be matched.</p>` : ""}` : `<p class="small">${S.gear ? "No shoes on your Strava yet." : "Loading shoes from Strava…"}</p><p class="small muted">Add your Vomero Plus, Cloudmonster 3 Hyper and Vaporfly 4 in Strava (Settings → My Gear → Add Shoes, with an estimate of the km already on them), and pick the shoe on each run. The app then tracks mileage and checks the shoe you wore against the plan.</p>`}</section>`;
+  // shoes (from the plan, not Strava)
+  const sk = shoeKm();
+  h += `<section class="card"><h3>Shoes</h3><div class="tablewrap"><table><thead><tr><th>Shoe</th><th class="r">Before 2 Nov</th><th class="r">Since</th><th class="r">Total</th></tr></thead><tbody>${Object.entries(sk.shoes).map(([k, v]) => `<tr><td style="white-space:normal">${esc(SHOES[k].name)}</td><td class="r">${v.start ? "≈" + v.start : "0"}</td><td class="r">${v.challenge.toFixed(1)}</td><td class="r"><strong>${v.total.toFixed(0)} km</strong>${k === "vaporfly" && v.total > 400 ? ` <span style="color:var(--warn)">· foam ageing</span>` : ""}</td></tr>`).join("")}</tbody></table></div><p class="small muted">Each run counts towards the shoe its plan suggested.${sk.untracked > 0.05 ? ` ${sk.untracked.toFixed(1)} km of unplanned running isn’t assigned to a shoe.` : ""}</p></section>`;
 
   return h;
 }
@@ -915,8 +998,8 @@ function renderDrawer() {
   const s = S.weeks[monday(d)]?.sessions?.find((x) => x.date === d);
   let h = `<div class="drawer-head"><div><div class="eyebrow">${esc(fdate(d, { weekday: "long", day: "numeric", month: "long" }))}</div><h2 id="drawer-title">${esc(runs[0]?.name || s?.title || (d === RACE ? "Race day" : "Day"))}</h2></div><button class="btn small x" data-act="close" aria-label="Close">Close</button></div>`;
   if (s) {
-    h += `<section class="card"><div class="row1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(s.type)}<strong>${esc(s.title)}</strong>${s.distanceKm ? `<span class="mono">${esc(s.distanceKm)} km</span>` : ""}</div>
-      ${s.details ? `<p>${esc(s.details)}</p>` : ""}${profile(s, true)}${targets(s)}
+    h += `<section class="card"><div class="row1" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(s.type)}<strong>${esc(s.title)}</strong>${planKm(s) ? `<span class="mono">${esc(planKm(s).toFixed(1))} km</span>` : ""}</div>
+      ${s.details ? `<p>${esc(s.details)}</p>` : ""}${profile(s, true, runs[0])}${targets(s)}
       ${s.tips?.length ? `<div><div class="eyebrow">Tips</div><ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</section>`;
   } else if (d === RACE) {
     h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The race-week plan appears once you ask Claude for it on Monday 7 December.</p></section>`;
@@ -945,20 +1028,19 @@ function runDetail(r, s) {
     const dev = got && target ? ((got - target) / target) * 100 : null;
     h += `<p class="small">Target ${fmtT(s.paceMin)}–${fmtT(s.paceMax)}/km · ${wp ? "work reps" : "whole run"} ${fmtP(got)}${dev != null ? ` (${dev > 0 ? "+" : ""}${dev.toFixed(1)}%)` : ""}</p>`;
   }
-  if (pf && Object.keys(pf.best).length) h += `<div class="targets">${Object.keys(BE_LABEL).filter((k) => pf.best[k]).map((k) => `<span class="t">${esc(BE_LABEL[k])} <b>${fmtT(pf.best[k])}</b></span>`).join("")}</div>`;
-  const worn = r.gear ? gearById(r.gear) : null;
-  if (worn) h += `<p class="small">Shoe: <strong>${esc(worn.name)}</strong>${s?.shoe && s.shoe !== "none" && worn.key && worn.key !== s.shoe ? ` <span class="muted">(plan said ${esc(SHOES[s.shoe].name)})</span>` : ""}</p>`;
-  else if (r.gear === null && S.gear?.length) h += `<p class="small muted">No shoe tagged on this run in Strava.</p>`;
-  if (r.weather) h += `<p class="small muted">${esc([r.weather.condition, r.weather.temperature != null ? Math.round(r.weather.temperature) + "°C" : null, r.weather.wind_speed != null ? Math.round(r.weather.wind_speed) + " km/h wind" : null].filter(Boolean).join(" · "))}</p>`;
-  if (pf?.laps?.length > 1) h += `<div class="tablewrap"><table><thead><tr><th>Lap</th><th class="r">m</th><th class="r">Pace</th><th class="r">W</th><th class="r">spm</th>${pf.laps.some((l) => l.hr) ? `<th class="r">HR</th>` : ""}</tr></thead><tbody>${pf.laps.map((l, i) => `<tr><td>${i + 1}</td><td class="r">${Math.round(l.m)}</td><td class="r">${l.m ? fmtT(l.t / (l.m / 1000)) : "–"}</td><td class="r">${l.watts ? Math.round(l.watts) : "–"}</td><td class="r">${l.cad ? Math.round(l.cad) : "–"}</td>${pf.laps.some((x) => x.hr) ? `<td class="r">${l.hr ? Math.round(l.hr) : "–"}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
-  h += `<section class="card" aria-labelledby="an-${esc(r.id)}"><h3 id="an-${esc(r.id)}">Coach’s analysis</h3>`;
+  const rows = s ? sectionRows(r, s) : null;
+  if (rows) h += `<section class="card"><h3>Sections</h3>${sectionTable(rows)}</section>`;
+  const sh = shoeOf(r);
+  h += `<p class="small muted">${sh ? `Shoe: ${esc(SHOES[sh].name)}` : ""}${sh && r.weather ? " · " : ""}${r.weather ? esc([r.weather.condition, r.weather.temperature != null ? Math.round(r.weather.temperature) + "°C" : null, r.weather.wind_speed != null ? Math.round(r.weather.wind_speed) + " km/h wind" : null].filter(Boolean).join(" · ")) : ""}</p>`;
+  h += `<section class="card" aria-labelledby="an-${esc(r.id)}"><h3 id="an-${esc(r.id)}">Coach’s take</h3>`;
   if (S.busy?.kind === "analyse" && S.busy.runId === r.id) h += busyLine("analyse", "The coach is reviewing this run…");
   else if (a) {
-    h += `<span class="verdict ${esc(a.verdict)}">${esc({ nailed: "Nailed it", good: "Good", "off-target": "Off target", unplanned: "Unplanned" }[a.verdict] || a.verdict)}</span>
-      <p><strong>${esc(a.headline)}</strong></p><div class="prose">${a.vsTarget ? `<p>${esc(a.vsTarget)}</p>` : ""}${a.effort ? `<p>${esc(a.effort)}</p>` : ""}${String(a.analysis).split(/\n\s*\n/).map((x) => `<p>${esc(x.trim())}</p>`).join("")}</div>
-      ${a.nextTime?.length ? `<div><div class="eyebrow">Next time</div><ul class="tips">${a.nextTime.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+    const list = (title, xs, cls) => (xs?.length ? `<div class="alist ${cls}"><div class="eyebrow">${title}</div><ul>${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "");
+    h += `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="verdict ${esc(a.verdict)}">${esc({ nailed: "Nailed it", good: "Good", "off-target": "Off target", unplanned: "Unplanned" }[a.verdict] || a.verdict)}</span><strong>${esc(a.headline)}</strong></div>
+      <div class="agrid">${list("Went well", a.good, "good")}${list("Work on", a.improve, "warn")}</div>
+      ${a.next ? `<p class="next-run"><span class="eyebrow">Next run</span> ${esc(a.next)}</p>` : ""}
       <p class="small muted">Analysed ${esc(new Date(a.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))} · <button class="linkish" data-act="analyse" data-run="${esc(r.id)}" ${S.busy || !S.sample ? "disabled" : ""}>Analyse again</button></p>`;
-  } else h += `<p class="muted small">${pf ? "Compare this run with its target and the sub-20 goal." : "Loading laps and best efforts from Strava…"}</p><button class="btn primary" data-act="analyse" data-run="${esc(r.id)}" ${S.busy || !S.sample || !pf ? "disabled" : ""}>Analyse this run</button>`;
+  } else h += `<p class="muted small">${pf ? "A short verdict on this run, from the coach." : "Loading laps and best efforts from Strava…"}</p><button class="btn primary" data-act="analyse" data-run="${esc(r.id)}" ${S.busy || !S.sample || !pf ? "disabled" : ""}>Analyse this run</button>`;
   h += `</section>`;
   return h;
 }
@@ -984,7 +1066,7 @@ document.addEventListener("click", (e) => {
   const v = e.target.closest("[data-view]");
   if (v) { S.view = v.dataset.view; history.replaceState(null, "", "#" + S.view); render(); return; }
   const open = e.target.closest("[data-open]");
-  if (open && !e.target.closest("#drawer")) { S.drawer = { date: open.dataset.open }; render(); return; }
+  if (open && !e.target.closest("#drawer")) { S.drawer = { date: open.dataset.open }; render(); loadStreamsFor(open.dataset.open); return; }
   if (e.target === $("#scrim")) { S.drawer = null; render(); return; }
   const act = e.target.closest("[data-act]");
   if (!act) return;
