@@ -338,7 +338,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 /* ================= State ================= */
 const S = {
   view: ["week", "calendar", "stats"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
-  runs: [], perf: {}, zones: null, streams: {}, stravaErr: null, stravaLoading: true,
+  runs: [], perf: {}, zones: null, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
@@ -423,17 +423,6 @@ async function loadZones() {
     const r = await mcp.callTool(STRAVA, "get_athlete_zones", {}, { cache: { staleTime: 864e5, gcTime: 6048e5 } });
     S.zones = r.payload || null; render();
   } catch (e) { console.warn("zones", e); }
-}
-/** Per-second pace for the plan-vs-actual graph, only when laps don't line up with the plan */
-async function loadStreamsFor(date) {
-  const s = S.weeks[monday(date)]?.sessions?.find((x) => x.date === date);
-  for (const r of runsOn(date)) {
-    if (!s || S.streams[r.id] || matchLaps(r, s) || !pieces(s).length || !mcp) continue;
-    try {
-      const res = await mcp.callTool(STRAVA, "get_activity_streams", { activity_id: r.id, streams: ["distance", "velocity_smooth"], resolution: 200 }, { cache: { staleTime: 6048e5, gcTime: 6048e5 } });
-      if (res.payload && Array.isArray(res.payload.distance)) { S.streams[r.id] = res.payload; render(); }
-    } catch (e) { console.warn("streams", e); }
-  }
 }
 /** Shoe per run = the shoe the plan picked for that day (you run in the suggested pair). */
 function shoeOf(run) { const s = S.weeks[monday(run.date)]?.sessions?.find((x) => x.date === run.date); return s && SHOES[s.shoe] && s.shoe !== "none" ? s.shoe : null; }
@@ -789,27 +778,13 @@ function profile(s, big, run) {
   const floor = 540, top = 210;
   const hgt = (pace) => { const sp = 1 / Math.min(Math.max(pace, top), floor); return Math.max(2, ((sp - 1 / floor) / (1 / top - 1 / floor)) * (H - T - B)); };
   let x = 0, g = "";
-  const matched = run ? matchLaps(run, s) : null;
-  const actualPath = [];
-  for (const [idx, p] of ps.entries()) {
+  for (const p of ps) {
     const w = (dur(p) / totalT) * W, h = hgt(mid(p));
     const pace = p.pace[0] === p.pace[1] ? fmtT(p.pace[0]) : `${fmtT(p.pace[0])}–${fmtT(p.pace[1])}`;
     const dist = p.sec ? (p.sec >= 60 && p.sec % 60 === 0 ? `${p.sec / 60} min` : `${p.sec} s`) : p.km >= 1 ? `${+p.km.toFixed(2)} km` : `${Math.round(p.km * 1000)} m`;
     g += `<g data-tip="${esc(p.label)} · ${esc(dist)}${p.kind === "rest" && p.pace[0] >= 600 ? "" : ` @ ${esc(pace)}/km`}"><rect x="${x.toFixed(2)}" y="${T}" width="${Math.max(0.5, w).toFixed(2)}" height="${H - T - B}" fill="transparent"/><rect x="${(x + 0.5).toFixed(2)}" y="${(H - B - h).toFixed(2)}" width="${Math.max(0.5, w - 1).toFixed(2)}" height="${h.toFixed(2)}" rx="${big ? 2 : 1}" fill="${PIECE_COLOR[p.kind]}"${p.kind === "rest" ? ' stroke="var(--fg-2)" stroke-width="1"' : ""}/></g>`;
-    if (matched) { const l = matched[idx].lap; const ap = l.m ? l.t / (l.m / 1000) : floor; const yy = (H - B - hgt(ap)).toFixed(1); actualPath.push(`${x.toFixed(1)},${yy}`, `${(x + w).toFixed(1)},${yy}`); }
     x += w;
   }
-  if (run && !matched && S.streams[run.id]) {
-    // no lap match: draw the run's pace by distance, scaled to the planned length
-    const st = S.streams[run.id], dist = st.distance || [], vel = st.velocity_smooth || [];
-    const runKm = (dist[dist.length - 1] || 0) / 1000;
-    for (let i = 0; i < dist.length; i++) {
-      const w5 = vel.slice(Math.max(0, i - 2), i + 3).filter((v) => v > 0.3);
-      const v = w5.length ? w5.reduce((a, b) => a + b, 0) / w5.length : 0.3;
-      actualPath.push(`${((dist[i] / 1000 / Math.max(runKm, total)) * W).toFixed(1)},${(H - B - hgt(1000 / v)).toFixed(1)}`);
-    }
-  }
-  if (actualPath.length) g += `<polyline points="${actualPath.join(" ")}" fill="none" stroke="var(--fg)" stroke-width="${big ? 2 : 1.5}" stroke-linejoin="round"/>`;
   if (big) {
     const work = ps.filter((p) => p.kind === "work");
     const refs = [...new Set([work.length ? mid(work[0]) : null, mid(ps.find((p) => p.kind === "easy") || ps[0])].filter(Boolean).map(Math.round))];
@@ -817,8 +792,8 @@ function profile(s, big, run) {
     g += `<text class="ax" x="0" y="${H - 4}">Start</text><text class="ax" x="${W}" y="${H - 4}" text-anchor="end">Finish</text>`;
   }
   const kinds = [...new Set(ps.map((p) => p.kind))];
-  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}${k === "rest" ? ";border:1px solid var(--fg-2)" : ""}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}${actualPath.length ? `<span><i class="sw" style="height:3px;background:var(--fg);border-radius:0"></i>Your pace</span>` : ""}</div>` : "";
-  const head = big ? `<div class="prof-head"><span class="eyebrow">${run ? "Plan vs actual" : "Sections"}</span><span class="prof-km"><span><span class="muted small">Planned</span> <strong>${esc(planKm(s).toFixed(1))} km</strong></span>${run ? `<span><span class="muted small">Ran</span> <strong>${run.km.toFixed(2)} km</strong></span>` : ""}</span></div>` : "";
+  const legend = big ? `<div class="legend small">${kinds.map((k) => `<span><i class="sw" style="background:${PIECE_COLOR[k]}${k === "rest" ? ";border:1px solid var(--fg-2)" : ""}"></i>${{ easy: "Easy / warm-up", work: "Work", stride: "Strides", rest: "Recovery" }[k]}</span>`).join("")}</div>` : "";
+  const head = big ? `<div class="prof-head"><span class="eyebrow">Sections</span><span class="prof-km"><span><span class="muted small">Planned</span> <strong>${esc(planKm(s).toFixed(1))} km</strong></span>${run ? `<span><span class="muted small">Ran</span> <strong>${run.km.toFixed(2)} km</strong></span>` : ""}</span></div>` : "";
   return `<div class="chart profile${big ? " big" : ""}">${head}<svg viewBox="0 0 ${W} ${H}" ${big ? "" : 'preserveAspectRatio="none"'} role="img" aria-label="Session sections in order">${g}</svg>${big ? `<div class="tip" aria-live="polite">Hover or tap a section for its pace.</div>` : ""}${legend}</div>`;
 }
 
@@ -1066,7 +1041,7 @@ document.addEventListener("click", (e) => {
   const v = e.target.closest("[data-view]");
   if (v) { S.view = v.dataset.view; history.replaceState(null, "", "#" + S.view); render(); return; }
   const open = e.target.closest("[data-open]");
-  if (open && !e.target.closest("#drawer")) { S.drawer = { date: open.dataset.open }; render(); loadStreamsFor(open.dataset.open); return; }
+  if (open && !e.target.closest("#drawer")) { S.drawer = { date: open.dataset.open }; render(); return; }
   if (e.target === $("#scrim")) { S.drawer = null; render(); return; }
   const act = e.target.closest("[data-act]");
   if (!act) return;
