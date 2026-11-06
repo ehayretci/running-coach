@@ -210,6 +210,8 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 .alist.warn .eyebrow { color: var(--warn); }
 .next-run { border-left: 3px solid var(--accent); padding-left: 10px; }
 .next-run .eyebrow { margin-right: 6px; }
+.routemap svg { width: 100%; height: auto; display: block; }
+.routemap .ax { fill: var(--fg-2); font-size: 10px; font-family: var(--font-body); }
 .prof-km { display: inline-flex; gap: 12px; font-variant-numeric: tabular-nums; }
 .prof-km strong { font-family: var(--font-display); font-size: 1.25rem; }
 .prof-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
@@ -389,6 +391,7 @@ function mapRun(a) {
     km, moving: num(s.moving_time) ?? 0, elapsed: num(s.elapsed_time) ?? 0, pace: num(s.avg_pace) ?? (km ? (s.moving_time / km) : undefined),
     elev: num(s.elevation_gain), cadence: num(s.avg_cadence) ? s.avg_cadence * 2 : undefined, kcal: num(s.total_calories),
     effort: num(s.relative_effort), weather: a.weather || null, gear: a.gear_id || null, sport: a.sport_type,
+    polyline: typeof a.reduced_polyline === "string" ? a.reduced_polyline : typeof a.polyline === "string" ? a.polyline : null,
   };
 }
 function mapPerf(p) {
@@ -407,7 +410,7 @@ async function loadStrava(refresh = false) {
   S.stravaLoading = true; S.stravaErr = null; render();
   try {
     const res = await mcp.callTool(STRAVA, "list_activities",
-      { range_start: CONTEXT_FROM + "T00:00:00", range_end: addDays(today(), 1) + "T23:59:59", first: 100, use_preferred_units: true, ordering: "StartDateLocalAsc" },
+      { range_start: CONTEXT_FROM + "T00:00:00", range_end: addDays(today(), 1) + "T23:59:59", first: 100, use_preferred_units: true, ordering: "StartDateLocalAsc", include_polyline: true },
       { cache: { staleTime: 0, gcTime: 6048e5, refresh: true } });
     const list = (res.payload && res.payload.activities) || [];
     S.runs = list.filter((a) => RUN_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
@@ -986,6 +989,49 @@ function renderDrawer() {
   if (!runs.length && s && s.type !== "rest" && d < today()) h += `<div class="banner bad"><span class="dot"></span><div>No run recorded on Strava for this day.</div></div>`;
   return h;
 }
+/* ---------- Route map (drawn from Strava's route line; no street tiles) ---------- */
+function decodePolyline(str) {
+  const pts = []; let i = 0, lat = 0, lng = 0;
+  while (i < str.length) {
+    for (const k of [0, 1]) {
+      let b, shift = 0, res = 0;
+      do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < str.length);
+      const d = res & 1 ? ~(res >> 1) : res >> 1;
+      if (k === 0) lat += d; else lng += d;
+    }
+    pts.push([lat / 1e5, lng / 1e5]);
+  }
+  return pts;
+}
+function routeMap(r) {
+  if (!r.polyline) return "";
+  let pts;
+  try { pts = decodePolyline(r.polyline); } catch { return ""; }
+  if (pts.length < 2) return "";
+  const lat0 = pts.reduce((a, p) => a + p[0], 0) / pts.length, kx = Math.cos((lat0 * Math.PI) / 180);
+  const xy = pts.map(([la, ln]) => [ln * kx, -la]);
+  const xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = 360, H = 220, pad = 16;
+  const sc = Math.min((W - 2 * pad) / Math.max(maxX - minX, 1e-6), (H - 2 * pad) / Math.max(maxY - minY, 1e-6));
+  const ox = (W - (maxX - minX) * sc) / 2, oy = (H - (maxY - minY) * sc) / 2;
+  const P = xy.map(([x, y]) => [ox + (x - minX) * sc, oy + (y - minY) * sc]);
+  const d = P.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  // scale bar: metres per SVG unit (1° lat ≈ 111.32 km)
+  const mPerUnit = 111320 / sc, bar = [100, 200, 500, 1000, 2000].find((m) => m / mPerUnit > 50) || 2000;
+  const [sx, sy] = P[0], [fx, fy] = P[P.length - 1];
+  return `<section class="card routemap"><div class="prof-head"><span class="eyebrow">Route</span><a class="small" href="https://www.strava.com/activities/${esc(r.id)}" target="_blank" rel="noopener">Open full map on Strava ↗</a></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Route of this run">
+      <rect x="0" y="0" width="${W}" height="${H}" rx="10" fill="var(--surface-2)"/>
+      <path d="${d}" fill="none" stroke="var(--surface)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${fx.toFixed(1)}" cy="${fy.toFixed(1)}" r="6" fill="var(--bad)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6" fill="var(--good)" stroke="var(--surface)" stroke-width="2"/>
+      <line x1="${W - pad - bar / mPerUnit}" x2="${W - pad}" y1="${H - 12}" y2="${H - 12}" stroke="var(--fg-2)" stroke-width="2"/>
+      <text class="ax" x="${W - pad}" y="${H - 17}" text-anchor="end">${bar >= 1000 ? bar / 1000 + " km" : bar + " m"}</text>
+    </svg>
+    <div class="legend small"><span><i class="sw" style="background:var(--good);border-radius:50%"></i>Start</span><span><i class="sw" style="background:var(--bad);border-radius:50%"></i>Finish</span><span class="muted">North is up</span></div></section>`;
+}
 function runDetail(r, s) {
   const pf = S.perf[r.id];
   const wp = workPace(r, s);
@@ -1006,6 +1052,7 @@ function runDetail(r, s) {
     const dev = got && target ? ((got - target) / target) * 100 : null;
     h += `<p class="small">Target ${fmtT(s.paceMin)}–${fmtT(s.paceMax)}/km · ${wp ? "work reps" : "whole run"} ${fmtP(got)}${dev != null ? ` (${dev > 0 ? "+" : ""}${dev.toFixed(1)}%)` : ""}</p>`;
   }
+  h += routeMap(r);
   const rows = s ? sectionRows(r, s) : null;
   if (rows) h += `<section class="card"><h3>Sections</h3>${sectionTable(rows)}</section>`;
   const sh = shoeOf(r);
