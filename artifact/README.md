@@ -6,7 +6,7 @@ Sub 20 Challenge runs as a claude.ai artifact: https://claude.ai/artifact/Xop3Bf
 
 - **Strava connector** (`mcp`): `list_activities`, `get_activity_performance` and `get_athlete_zones`, read with the viewer's own Strava connection.
 - **Claude** (`sample`): run analysis, on the viewer's Claude account. Weekly plans are made in a Claude chat, not on the page.
-- **Storage** (`db`): `weeks/<monday>` holds each week's plan, written by Claude from chat with the ArtifactData tool. `analyses/<runId>` holds run analyses, written by the page.
+- **Storage** (`db`): `weeks/<monday>` holds each week's plan, written by Claude from chat with the ArtifactData tool. `analyses/<runId>` holds run analyses, written by the page. `logs/<runId>` holds your confirmation, comment and effort for each run; challenge runs count only once logged.
 
 The views are **Week** (this week's plan, or the runs done so far), **Calendar** (2 Nov to 10 Dec) and **Progress** (data-only 5K prediction and goal outlook).
 

@@ -212,6 +212,13 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 .next-run .eyebrow { margin-right: 6px; }
 .routemap svg { width: 100%; height: auto; display: block; }
 .routemap .ax { fill: var(--fg-2); font-size: 10px; font-family: var(--font-body); }
+.card.pending { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); background: color-mix(in srgb, var(--warn) 7%, var(--surface)); }
+.card.pending .daypick { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; }
+.card.pending .daypick button { width: auto; padding: 6px 0; }
+.day.pending { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+.status.pend { background: var(--warn); color: var(--surface); padding: 1px 8px; border-radius: 99px; }
+.pend-line { font-size: 0.9rem; font-weight: 600; color: var(--warn); font-variant-numeric: tabular-nums; }
+.cell.pend { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
 .prof-km { display: inline-flex; gap: 12px; font-variant-numeric: tabular-nums; }
 .prof-km strong { font-family: var(--font-display); font-size: 1.25rem; }
 .prof-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
@@ -343,7 +350,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 const S = {
   view: location.hash === "#stats" ? "progress" : ["week", "calendar", "progress"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
   runs: [], perf: {}, zones: null, stravaErr: null, stravaLoading: true,
-  weeks: {}, analyses: {},
+  weeks: {}, analyses: {}, logs: {}, logsReady: false, allRuns: [], logDrafts: {}, logEffort: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
   busy: null, // {kind, ctl}
@@ -353,8 +360,16 @@ let mcp = null, db = null;
 
 /* ================= Persistence (private to you) ================= */
 const LS = "sub20-store-v1";
-function lsLoad() { try { const o = JSON.parse(localStorage.getItem(LS) || "{}"); S.analyses = o.analyses || {}; } catch { /* ignore */ } }
-function lsSave() { try { localStorage.setItem(LS, JSON.stringify({ analyses: S.analyses })); } catch { /* ignore */ } }
+function lsLoad() { try { const o = JSON.parse(localStorage.getItem(LS) || "{}"); S.analyses = o.analyses || {}; S.logs = o.logs || {}; S.logsReady = true; applyLogs(); } catch { /* ignore */ } }
+function lsSave() { try { localStorage.setItem(LS, JSON.stringify({ analyses: S.analyses, logs: S.logs })); } catch { /* ignore */ } }
+async function logRun(run) {
+  const comment = (S.logDrafts[run.id] || "").trim();
+  const effort = S.logEffort[run.id] || null;
+  const entry = { comment, effort, loggedAt: Date.now() };
+  S.logs[run.id] = entry; applyLogs(); delete S.logDrafts[run.id]; render();
+  if (db) { try { await db.collection("logs").doc(run.id).set(entry); } catch (e) { S.storeErr = "Couldn’t save the log (" + (e?.code || "error") + ")."; render(); } } else lsSave();
+  if (S.sample && S.perf[run.id]) { S.drawer = { date: run.date }; render(); analyse(run); }
+}
 /** Plans live in `weeks/<monday>` — written by Claude in your chat. Run analyses live in `analyses/<runId>`. */
 async function saveAnalysis(id) {
   if (!db) { lsSave(); return; }
@@ -372,6 +387,11 @@ async function initStore() {
     for (const doc of snap.docs) { const b = doc.data(); if (b && Array.isArray(b.sessions)) weeks[doc.id] = { ...b, sessions: b.sessions.map((x) => ({ ...x, distanceKm: planKm(x) })) }; }
     S.weeks = weeks; if (!snap.metadata.fromCache) { got |= 1; if (got === 3) { clearTimeout(timer); S.storeErr = null; } }
     S.store = "ready"; render();
+  }, onErr);
+  db.collection("logs").onSnapshot((snap) => {
+    const l = {};
+    for (const doc of snap.docs) { const b = doc.data(); if (b) l[doc.id] = b; }
+    S.logs = l; if (!snap.metadata.fromCache) S.logsReady = true; applyLogs(); render();
   }, onErr);
   db.collection("analyses").onSnapshot((snap) => {
     const a = {};
@@ -413,7 +433,8 @@ async function loadStrava(refresh = false) {
       { range_start: CONTEXT_FROM + "T00:00:00", range_end: addDays(today(), 1) + "T23:59:59", first: 100, use_preferred_units: true, ordering: "StartDateLocalAsc", include_polyline: true },
       { cache: { staleTime: 0, gcTime: 6048e5, refresh: true } });
     const list = (res.payload && res.payload.activities) || [];
-    S.runs = list.filter((a) => RUN_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    S.allRuns = list.filter((a) => RUN_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    applyLogs();
     S.stravaLoading = false; render();
     await loadZones();
     await loadPerfs();
@@ -440,7 +461,7 @@ function shoeKm() {
   return { shoes: out, untracked };
 }
 async function loadPerfs() {
-  const need = S.runs.filter((r) => !S.perf[r.id]);
+  const need = S.allRuns.filter((r) => !S.perf[r.id]);
   let i = 0;
   const worker = async () => {
     while (i < need.length) {
@@ -470,6 +491,12 @@ function stravaMsg(e) {
 }
 
 /* ================= Analytics ================= */
+/** A challenge run counts only once you've logged it. Runs before the challenge count automatically. */
+const isLogged = (r) => r.date < START || !!S.logs[r.id];
+function applyLogs() { S.runs = S.allRuns.filter(isLogged); }
+const pendingRuns = () => (S.logsReady ? S.allRuns.filter((r) => !isLogged(r)) : []);
+const pendingOn = (d) => pendingRuns().filter((r) => r.date === d);
+const allRunsOn = (d) => S.allRuns.filter((r) => r.date === d).sort((a, b) => b.km - a.km);
 const runsOn = (d) => S.runs.filter((r) => r.date === d).sort((a, b) => b.km - a.km);
 const challengeRuns = () => S.runs.filter((r) => r.date >= START);
 const weekKm = (m) => S.runs.filter((r) => r.date >= m && r.date <= addDays(m, 6)).reduce((a, r) => a + r.km, 0);
@@ -617,6 +644,9 @@ function context(weekStart, asOf = today()) {
     if (pf?.best?.Fastest5k) line += `, best 5K ${fmtT(pf.best.Fastest5k)}`;
     if (pf?.best?.Fastest1k) line += `, best 1K ${fmtT(pf.best.Fastest1k)}`;
     if (planned) line += ` | planned: ${planned.title} (${planned.distanceKm} km)`;
+    const lg = S.logs[r.id];
+    if (lg?.effort) line += ` | felt ${lg.effort}/10`;
+    if (lg?.comment) line += ` | athlete: "${lg.comment.slice(0, 300)}"`;
     if (pf?.laps?.length >= 3 && pf.laps.length <= 30) line += `\n    laps: ${pf.laps.map((l) => `${Math.round(l.m)}m ${fmtP(l.t / (l.m / 1000))}${l.watts ? " " + Math.round(l.watts) + "W" : ""}`).join("; ")}`;
     L.push(line);
   }
@@ -661,7 +691,9 @@ async function analyse(run) {
   const rows = s ? sectionRows(run, s) : null;
   const secs = rows ? rows.map((r) => ({ section: r.name, target: r.target, actualPace: r.actual.pace && fmtP(r.actual.pace), actualSec: r.actual.sec && Math.round(r.actual.sec), watts: r.actual.watts && Math.round(r.actual.watts), hr: r.actual.hr && Math.round(r.actual.hr), flags: r.flags })) : null;
   const runCtx = context(monday(run.date), run.date).split("\n").filter((l) => !/^(GOAL|BASELINE|CURRENT FITNESS|Short-effort|Trend|STRAVA'S OWN)/.test(l)).join("\n");
-  const prompt = `${COACH}\n\n${runCtx}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off sub-20 is, or whether the goal is realistic — that lives on the Progress page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
+  const lg = S.logs[run.id];
+  const note = lg && (lg.comment || lg.effort) ? `\nATHLETE'S OWN NOTES ON THIS RUN (take them into account — they explain why it went the way it did; say so where they change your read): ${lg.effort ? `effort felt ${lg.effort}/10. ` : ""}${lg.comment ? `"${lg.comment}"` : ""}` : "";
+  const prompt = `${COACH}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off sub-20 is, or whether the goal is realistic — that lives on the Progress page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
   const ctl = new AbortController();
   S.busy = { kind: "analyse", ctl, runId: run.id }; render();
   try {
@@ -803,6 +835,29 @@ function profile(s, big, run) {
   return `<div class="chart profile${big ? " big" : ""}">${head}<svg viewBox="0 0 ${W} ${H}" ${big ? "" : 'preserveAspectRatio="none"'} role="img" aria-label="Session sections in order">${g}</svg>${big ? `<div class="tip" aria-live="polite">Hover or tap a section for its pace.</div>` : ""}${legend}</div>`;
 }
 
+/* ---------- Pending runs: confirm + comment before they count ---------- */
+function pendingCard(r) {
+  const s = S.weeks[monday(r.date)]?.sessions?.find((x) => x.date === r.date);
+  const pf = S.perf[r.id];
+  const eff = S.logEffort[r.id];
+  return `<section class="card pending" aria-labelledby="pend-${esc(r.id)}">
+    <div class="prof-head"><span class="eyebrow">New run to log</span><span class="small muted">${esc(fdate(r.date, { weekday: "short", day: "numeric", month: "short" }))}</span></div>
+    <h3 id="pend-${esc(r.id)}">${esc(r.name)}</h3>
+    <div class="targets"><span class="t"><b>${r.km.toFixed(2)}</b> km</span><span class="t"><b>${fmtT(r.moving)}</b></span><span class="t"><b>${fmtT(r.pace)}</b>/km</span>${pf?.watts ? `<span class="t"><b>${Math.round(pf.watts)}</b> W</span>` : ""}${pf?.avgHr ? `<span class="t"><b>${Math.round(pf.avgHr)}</b> bpm</span>` : ""}</div>
+    ${s && s.type !== "rest" ? `<p class="small muted">Planned: ${esc(s.title)} · ${esc(planKm(s).toFixed(1))} km</p>` : `<p class="small muted">No session was planned for this day.</p>`}
+    <label class="small" for="log-${esc(r.id)}"><strong>How did it go?</strong> <span class="muted">Optional: why you changed distance or pace, how you felt, sleep, food, niggles.</span></label>
+    <textarea id="log-${esc(r.id)}" data-log="${esc(r.id)}" rows="3" placeholder="e.g. Felt flat after a late dinner, so I turned the 800s into a steady 10 km.">${esc(S.logDrafts[r.id] || "")}</textarea>
+    <div><div class="small" style="margin-bottom:4px"><strong>Effort</strong> <span class="muted">(1 = very easy, 10 = all-out)</span></div>
+      <div class="daypick">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<button type="button" data-effort="${n}" data-run="${esc(r.id)}" aria-pressed="${eff === n}">${n}</button>`).join("")}</div></div>
+    <div><button class="btn primary" data-act="log" data-run="${esc(r.id)}">Log run${S.sample ? " & analyse" : ""}</button></div>
+  </section>`;
+}
+function pendingBlock() { return pendingRuns().slice().reverse().map(pendingCard).join(""); }
+function pendingBanner() {
+  const n = pendingRuns().length;
+  return n ? `<div class="banner warn"><span class="dot"></span><div>${n} run${n === 1 ? "" : "s"} waiting to be logged. <button class="linkish" data-view="week">Log in Week</button></div></div>` : "";
+}
+
 function renderWeek() {
   const t = today();
   const wk = monday(t);
@@ -813,6 +868,7 @@ function renderWeek() {
   let h = `<div class="week-head"><div><div class="eyebrow">This week · ${esc(phase)}</div><div class="range">${esc(fdate(wk, { day: "numeric", month: "short" }))} – ${esc(fdate(end, { day: "numeric", month: "short" }))}</div></div>
     <div class="chips"><span class="chip num">${weekKm(wk).toFixed(1)} km run</span>${plan ? `<span class="chip accent num">${plan.sessions.filter((s) => s.type !== "football").reduce((a, s) => a + (s.distanceKm || 0), 0).toFixed(0)} km running planned</span>` : ""}</div></div>`;
   h += banners();
+  h += pendingBlock();
   if (!plan) {
     const pastRuns = S.runs.filter((r) => r.date >= wk && r.date <= t);
     h += `<div class="empty"><h3>No plan for this week yet</h3><p class="small">${S.store === "ready" || S.store === "local" ? "Ask Claude in your chat to plan this week. It reads your Strava runs and your notes, and the plan appears here." : "Loading saved plans…"}</p></div>`;
@@ -828,40 +884,45 @@ function renderWeek() {
 function dayRow(d, s) {
   const t = today();
   const runs = runsOn(d);
+  const pend = pendingOn(d);
   const isToday = d === t;
   const dn = `<div><div class="dname">${DAYS[wday(d)]}</div><div class="ddate">${esc(fdate(d, { day: "numeric", month: "short" }))}</div></div>`;
   const runLine = runs.map((r) => `<div class="done-line">✓ ${r.km.toFixed(2)} km · ${fmtT(r.moving)} · ${fmtP(r.pace)}${S.perf[r.id]?.watts ? " · " + Math.round(S.perf[r.id].watts) + " W" : ""}</div>`).join("");
+  const pendLine = pend.map((r) => `<div class="pend-line">${r.km.toFixed(2)} km · ${fmtT(r.moving)} · ${fmtP(r.pace)} · waiting for your log</div>`).join("");
   if (!s) {
+    if (!runs.length && pend.length) return `<button type="button" class="day pending${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("run")}<span class="title">${esc(pend[0].name)}</span><span class="status pend">To log</span></div>${pendLine}</div></button>`;
     if (!runs.length) return "";
     return `<button type="button" class="day done${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("run")}<span class="title">${esc(runs[0].name)}</span><span class="km num">${runs[0].km.toFixed(1)} km</span></div>${runLine}</div></button>`;
   }
   const rest = s.type === "rest" || s.type === "cross";
-  const status = runs.length ? `<span class="status done">Done</span>` : !rest && d < t ? `<span class="status missed">Missed</span>` : "";
-  const state = runs.length ? " done" : !rest && d < t ? " missed" : rest ? " rest" : "";
+  const status = runs.length ? `<span class="status done">Done</span>` : pend.length ? `<span class="status pend">To log</span>` : !rest && d < t ? `<span class="status missed">Missed</span>` : "";
+  const state = runs.length ? " done" : pend.length ? " pending" : !rest && d < t ? " missed" : rest ? " rest" : "";
   return `<button type="button" class="day${isToday ? " today" : ""}${state}" data-open="${esc(d)}">${dn}<div class="body">
     <div class="row1">${tag(s.type)}<span class="title">${esc(s.title)}</span>${status}${s.distanceKm ? `<span class="km num">${esc(s.distanceKm)} km</span>` : ""}</div>
     ${s.details && !rest ? `<div class="details">${esc(s.details)}</div>` : ""}
-    ${rest ? "" : targets(s)}${runLine}</div></button>`;
+    ${rest ? "" : targets(s)}${runLine}${pendLine}</div></button>`;
 }
 
 function renderCalendar() {
   const t = today();
   const cur = monday(t);
-  let h = `<div class="week-head"><div><div class="eyebrow">Sub 20 Challenge</div><div class="range">2 Nov – 10 Dec</div></div></div>${banners()}
-  <div class="legend"><span><i class="sw" style="background:color-mix(in srgb, var(--good) 30%, var(--surface));border:1px solid var(--good)"></i>Run done</span><span><i class="sw" style="border-bottom:2px dashed var(--hard);border-radius:0;height:8px"></i>Planned (this week)</span><span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Race day</span></div>`;
+  let h = `<div class="week-head"><div><div class="eyebrow">Sub 20 Challenge</div><div class="range">2 Nov – 10 Dec</div></div></div>${banners()}${pendingBanner()}
+  <div class="legend"><span><i class="sw" style="background:color-mix(in srgb, var(--good) 30%, var(--surface));border:1px solid var(--good)"></i>Run done</span><span><i class="sw" style="background:color-mix(in srgb, var(--warn) 22%, var(--surface));border:1px solid var(--warn)"></i>To log</span><span><i class="sw" style="border-bottom:2px dashed var(--hard);border-radius:0;height:8px"></i>Planned (this week)</span><span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Race day</span></div>`;
   const start = monday(START), end = addDays(monday(RACE), 6);
   h += `<div class="cal">${DAYS.map((d) => `<div class="dow">${d}</div>`).join("")}`;
   for (let d = start; d <= end; d = addDays(d, 1)) {
     const off = d < START || d > RACE;
     const runs = off ? [] : runsOn(d);
     const s = !off && monday(d) === cur && S.weeks[cur] ? S.weeks[cur].sessions.find((x) => x.date === d) : null;
-    const cls = ["cell", off ? "off" : "", d === t ? "today" : "", d === RACE ? "race" : "", runs.length ? "ran" : ""].join(" ");
+    const pend = off ? [] : pendingOn(d);
+    const cls = ["cell", off ? "off" : "", d === t ? "today" : "", d === RACE ? "race" : "", runs.length ? "ran" : pend.length ? "pend" : ""].join(" ");
     const dayLabel = parse(d).getDate() === 1 || d === start ? fdate(d, { day: "numeric", month: "short" }) : String(parse(d).getDate());
     let inner = `<span class="d">${esc(dayLabel)}</span>`;
     for (const r of runs) inner += `<span class="r num">${r.km.toFixed(1)}</span><span class="rp">${esc(fmtT(r.pace))}/km</span>`;
-    if (s && s.type !== "rest" && !runs.length) inner += d < t ? `<span class="miss">Missed</span>` : `<span class="p ${(TYPES[s.type] || [])[1] || ""}">${esc(SHORT[s.type] || "Run")}</span>`;
+    for (const r of pend) inner += `<span class="r num">${r.km.toFixed(1)}</span><span class="miss" style="color:var(--warn)">To log</span>`;
+    if (s && s.type !== "rest" && !runs.length && !pend.length) inner += d < t ? `<span class="miss">Missed</span>` : `<span class="p ${(TYPES[s.type] || [])[1] || ""}">${esc(SHORT[s.type] || "Run")}</span>`;
     if (d === RACE && !runs.length) inner += `<span class="p race">Race</span>`;
-    h += (!off && (runs.length || (s && s.type !== "rest") || d === RACE)) ? `<button type="button" class="${cls}" data-open="${esc(d)}" aria-label="${esc(fdate(d))}">${inner}</button>` : `<div class="${cls}">${inner}</div>`;
+    h += (!off && (runs.length || pend.length || (s && s.type !== "rest") || d === RACE)) ? `<button type="button" class="${cls}" data-open="${esc(d)}" aria-label="${esc(fdate(d))}">${inner}</button>` : `<div class="${cls}">${inner}</div>`;
   }
   h += `</div>`;
   const nRuns = challengeRuns().length, km = challengeRuns().reduce((a, r) => a + r.km, 0);
@@ -909,7 +970,7 @@ function renderProgress() {
   const pw = powerModel();
   const z = hrZones();
   const left = daysBetween(t, RACE);
-  let h = `<div class="week-head"><div><div class="eyebrow">Progress · data only</div><div class="range">${left} days to go</div></div></div>${banners()}`;
+  let h = `<div class="week-head"><div><div class="eyebrow">Progress · data only</div><div class="range">${left} days to go</div></div></div>${banners()}${pendingBanner()}`;
   if (!p) return h + `<div class="empty">${S.stravaLoading ? `<div class="spinner"></div><p>Reading your Strava runs…</p>` : `<p>No runs found since ${esc(fdate(START))}.</p>`}</div>`;
   const gap = p.s - GOAL_S;
   const base = p.base;
@@ -975,7 +1036,7 @@ function renderProgress() {
 function renderDrawer() {
   const d = S.drawer?.date;
   if (!d) return "";
-  const runs = runsOn(d);
+  const runs = allRunsOn(d);
   const s = S.weeks[monday(d)]?.sessions?.find((x) => x.date === d);
   let h = `<div class="drawer-head"><div><div class="eyebrow">${esc(fdate(d, { weekday: "long", day: "numeric", month: "long" }))}</div><h2 id="drawer-title">${esc(runs[0]?.name || s?.title || (d === RACE ? "Race day" : "Day"))}</h2></div><button class="btn small x" data-act="close" aria-label="Close">Close</button></div>`;
   if (s) {
@@ -1057,6 +1118,9 @@ function runDetail(r, s) {
   if (rows) h += `<section class="card"><h3>Sections</h3>${sectionTable(rows)}</section>`;
   const sh = shoeOf(r);
   h += `<p class="small muted">${sh ? `Shoe: ${esc(SHOES[sh].name)}` : ""}${sh && r.weather ? " · " : ""}${r.weather ? esc([r.weather.condition, r.weather.temperature != null ? Math.round(r.weather.temperature) + "°C" : null, r.weather.wind_speed != null ? Math.round(r.weather.wind_speed) + " km/h wind" : null].filter(Boolean).join(" · ")) : ""}</p>`;
+  if (!isLogged(r)) { if (S.logsReady) h += pendingCard(r); return h; }
+  const lg = S.logs[r.id];
+  if (lg && (lg.comment || lg.effort)) h += `<section class="card"><div class="eyebrow">Your notes</div>${lg.effort ? `<p class="small">Effort <strong>${esc(lg.effort)}/10</strong></p>` : ""}${lg.comment ? `<p>${esc(lg.comment)}</p>` : ""}</section>`;
   h += `<section class="card" aria-labelledby="an-${esc(r.id)}"><h3 id="an-${esc(r.id)}">Coach’s take</h3>`;
   if (S.busy?.kind === "analyse" && S.busy.runId === r.id) h += busyLine("analyse", "The coach is reviewing this run…");
   else if (a) {
@@ -1077,13 +1141,15 @@ function renderHeader() {
 }
 let lastView = null;
 function render() {
+  const fid = document.activeElement?.dataset?.log, sel = fid ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   renderHeader();
   const view = $("#view");
-  if (S.stravaLoading && !S.runs.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Strava…</p></div>`;
+  if (S.stravaLoading && !S.allRuns.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Strava…</p></div>`;
   else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : renderProgress();
   if (lastView !== S.view) { window.scrollTo(0, 0); lastView = S.view; }
   const scrim = $("#scrim");
   if (S.drawer) { $("#drawer").innerHTML = renderDrawer(); scrim.hidden = false; } else scrim.hidden = true;
+  if (fid) { const el = (S.drawer ? $("#drawer") : $("#view")).querySelector(`[data-log="${CSS.escape(fid)}"]`) || document.querySelector(`[data-log="${CSS.escape(fid)}"]`); if (el) { el.focus(); if (sel) el.setSelectionRange(sel[0], sel[1]); } }
 }
 
 /* ================= Events ================= */
@@ -1093,6 +1159,8 @@ document.addEventListener("click", (e) => {
   const open = e.target.closest("[data-open]");
   if (open && !e.target.closest("#drawer")) { S.drawer = { date: open.dataset.open }; render(); return; }
   if (e.target === $("#scrim")) { S.drawer = null; render(); return; }
+  const ef = e.target.closest("[data-effort]");
+  if (ef) { const id = ef.dataset.run, n = Number(ef.dataset.effort); S.logEffort[id] = S.logEffort[id] === n ? undefined : n; render(); return; }
   const act = e.target.closest("[data-act]");
   if (!act) return;
   const a = act.dataset.act;
@@ -1100,8 +1168,10 @@ document.addEventListener("click", (e) => {
   else if (a === "stop") { S.busy?.ctl?.abort(); }
   else if (a === "dismiss-sample") { S.sampleErr = null; render(); }
   else if (a === "reload-strava") { if (mcp) loadStrava(true); }
-  else if (a === "analyse") { const r = S.runs.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; analyse(r); } }
+  else if (a === "log") { const r = S.allRuns.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; logRun(r); } }
+  else if (a === "analyse") { const r = S.allRuns.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; analyse(r); } }
 });
+document.addEventListener("input", (e) => { const id = e.target?.dataset?.log; if (id) S.logDrafts[id] = e.target.value; });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && S.drawer) { S.drawer = null; render(); }
 });
