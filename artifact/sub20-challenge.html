@@ -136,6 +136,7 @@ button.day:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--lin
 .day .row1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .day .title { font-weight: 600; }
 .day .km { margin-left: auto; font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; }
+.km-plan { font-family: var(--font-body); font-weight: 500; font-size: 0.8rem; color: var(--muted); }
 .day .details { color: var(--fg-2); font-size: 0.88rem; }
 .targets { display: flex; gap: 6px; flex-wrap: wrap; }
 .t { font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
@@ -862,10 +863,9 @@ function renderWeek() {
   const t = today();
   const wk = monday(t);
   const plan = S.weeks[wk];
-  const weeksLeft = Math.round(daysBetween(wk, monday(RACE)) / 7);
-  const phase = weeksLeft <= 0 ? "Race week" : weeksLeft === 1 ? "Taper week" : `${weeksLeft} weeks to race week`;
   const end = addDays(wk, 6);
-  let h = `<div class="week-head"><div><div class="eyebrow">This week · ${esc(phase)}</div><div class="range">${esc(fdate(wk, { day: "numeric", month: "short" }))} – ${esc(fdate(end, { day: "numeric", month: "short" }))}</div></div>
+  const weekNo = Math.floor(daysBetween(monday(START), wk) / 7) + 1;
+  let h = `<div class="week-head"><div><div class="eyebrow">${esc(fdate(wk, { day: "numeric", month: "short" }))} – ${esc(fdate(end, { day: "numeric", month: "short" }))}</div><div class="range">Week ${weekNo}</div></div>
     <div class="chips"><span class="chip num">${weekKm(wk).toFixed(1)} km run</span>${plan ? `<span class="chip accent num">${plan.sessions.filter((s) => s.type !== "football").reduce((a, s) => a + (s.distanceKm || 0), 0).toFixed(0)} km running planned</span>` : ""}</div></div>`;
   h += banners();
   h += pendingBlock();
@@ -880,6 +880,13 @@ function renderWeek() {
   h += `</section>`;
   if (plan.generatedAt) h += `<p class="muted small">Planned ${esc(new Date(plan.generatedAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}.</p>`;
   return h;
+}
+/** Planned km, with the km actually run next to it once there's a run that day */
+function kmCell(s, runs) {
+  if (!s.distanceKm && !runs.length) return "";
+  if (!runs.length) return `<span class="km num">${esc(s.distanceKm)} km</span>`;
+  const ran = runs.reduce((a, r) => a + r.km, 0);
+  return `<span class="km num">${ran.toFixed(2)} km${s.distanceKm ? `<span class="km-plan"> / ${esc(s.distanceKm)} km</span>` : ""}</span>`;
 }
 function dayRow(d, s) {
   const t = today();
@@ -898,7 +905,7 @@ function dayRow(d, s) {
   const status = runs.length ? `<span class="status done">Done</span>` : pend.length ? `<span class="status pend">To log</span>` : !rest && d < t ? `<span class="status missed">Missed</span>` : "";
   const state = runs.length ? " done" : pend.length ? " pending" : !rest && d < t ? " missed" : rest ? " rest" : "";
   return `<button type="button" class="day${isToday ? " today" : ""}${state}" data-open="${esc(d)}">${dn}<div class="body">
-    <div class="row1">${tag(s.type)}<span class="title">${esc(s.title)}</span>${status}${s.distanceKm ? `<span class="km num">${esc(s.distanceKm)} km</span>` : ""}</div>
+    <div class="row1">${tag(s.type)}<span class="title">${esc(s.title)}</span>${status}${kmCell(s, runs.length ? runs : pend)}</div>
     ${s.details && !rest ? `<div class="details">${esc(s.details)}</div>` : ""}
     ${rest ? "" : targets(s)}${runLine}${pendLine}</div></button>`;
 }
