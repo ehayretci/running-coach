@@ -404,6 +404,8 @@ async function initStore() {
 
 /* ================= Strava (through your connector) ================= */
 const RUN_TYPES = ["Run", "TrailRun", "VirtualRun"];
+const ACTIVITY_TYPES = [...RUN_TYPES, "Soccer"]; // football is tracked too, but never counted as running
+const isRunning = (r) => RUN_TYPES.includes(r.sport);
 function mapRun(a) {
   const s = a.summary || {};
   const km = num(s.distance) ?? 0;
@@ -434,7 +436,7 @@ async function loadStrava(refresh = false) {
       { range_start: CONTEXT_FROM + "T00:00:00", range_end: addDays(today(), 1) + "T23:59:59", first: 100, use_preferred_units: true, ordering: "StartDateLocalAsc", include_polyline: true },
       { cache: { staleTime: 0, gcTime: 6048e5, refresh: true } });
     const list = (res.payload && res.payload.activities) || [];
-    S.allRuns = list.filter((a) => RUN_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    S.allRuns = list.filter((a) => ACTIVITY_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
     applyLogs();
     S.stravaLoading = false; render();
     await loadZones();
@@ -499,12 +501,12 @@ const pendingRuns = () => (S.logsReady ? S.allRuns.filter((r) => !isLogged(r)) :
 const pendingOn = (d) => pendingRuns().filter((r) => r.date === d);
 const allRunsOn = (d) => S.allRuns.filter((r) => r.date === d).sort((a, b) => b.km - a.km);
 const runsOn = (d) => S.runs.filter((r) => r.date === d).sort((a, b) => b.km - a.km);
-const challengeRuns = () => S.runs.filter((r) => r.date >= START);
-const weekKm = (m) => S.runs.filter((r) => r.date >= m && r.date <= addDays(m, 6)).reduce((a, r) => a + r.km, 0);
+const challengeRuns = () => S.runs.filter((r) => r.date >= START && isRunning(r));
+const weekKm = (m) => S.runs.filter((r) => isRunning(r) && r.date >= m && r.date <= addDays(m, 6)).reduce((a, r) => a + r.km, 0);
 
 function evidence(runs) {
   const long = [], short = [];
-  for (const r of runs) {
+  for (const r of runs.filter(isRunning)) {
     const p = S.perf[r.id];
     if (p) {
       for (const [k, m] of Object.entries(BE_LONG)) if (p.best[k]) long.push({ run: r, label: BE_LABEL[k], m, s: p.best[k], v: vdot(m, p.best[k]) });
@@ -545,7 +547,7 @@ function prediction(asOf = today()) {
 /** Power: watts per (m/s) from runs with power, and the 5K power you've shown */
 function powerModel() {
   const pts = [];
-  for (const r of S.runs.filter((x) => x.date >= addDays(today(), -42))) {
+  for (const r of S.runs.filter((x) => isRunning(x) && x.date >= addDays(today(), -42))) {
     const p = S.perf[r.id];
     if (p?.watts && r.moving > 0) pts.push({ r, wPerMs: p.watts / ((r.km * 1000) / r.moving), watts: p.watts });
   }
@@ -589,7 +591,7 @@ function validate(sessions, weekStart) {
   for (const s of sessions) if (HARD.includes(s.type) && s.type !== "race" && s.date < RACE && daysBetween(s.date, RACE) <= 2) issues.push({ block: true, text: `Hard session on ${fdate(s.date)} is within 2 days of the race.` });
   const prev = [1, 2, 3].map((k) => weekKm(addDays(weekStart, -7 * k)));
   const avg = prev.reduce((a, b) => a + b, 0) / 3;
-  const km = sessions.filter((s) => s.type !== "football").reduce((a, s) => a + (s.distanceKm || 0), 0) + S.runs.filter((r) => r.date >= weekStart && r.date < today()).reduce((a, r) => a + r.km, 0);
+  const km = sessions.filter((s) => s.type !== "football").reduce((a, s) => a + (s.distanceKm || 0), 0) + S.runs.filter((r) => isRunning(r) && r.date >= weekStart && r.date < today()).reduce((a, r) => a + r.km, 0);
   if (avg > 8 && km > avg * 1.3) issues.push({ block: false, text: `≈${km.toFixed(0)} km of running this week vs ${avg.toFixed(0)} km/week over the last 3 weeks (+${Math.round((km / avg - 1) * 100)}%).` });
   return issues;
 }
@@ -635,7 +637,7 @@ function context(weekStart, asOf = today()) {
   for (const r of recent) {
     const pf = S.perf[r.id];
     const planned = S.weeks[monday(r.date)]?.sessions?.find((s) => s.date === r.date);
-    let line = `- ${r.date} “${r.name}” ${r.km.toFixed(2)} km in ${fmtT(r.moving)} (${fmtP(r.pace)})`;
+    let line = isRunning(r) ? `- ${r.date} “${r.name}” ${r.km.toFixed(2)} km in ${fmtT(r.moving)} (${fmtP(r.pace)})` : `- ${r.date} FOOTBALL “${r.name}” ${r.km.toFixed(2)} km over ${fmtT(r.moving)}${r.effort ? `, relative effort ${r.effort}` : ""}`;
     if (pf?.watts) line += `, ${Math.round(pf.watts)} W`;
     if (pf?.avgHr) line += `, HR ${Math.round(pf.avgHr)}`;
     if (r.cadence) line += `, ${Math.round(r.cadence)} spm`;
@@ -844,7 +846,7 @@ function pendingCard(r) {
   return `<section class="card pending" aria-labelledby="pend-${esc(r.id)}">
     <div class="prof-head"><span class="eyebrow">New run to log</span><span class="small muted">${esc(fdate(r.date, { weekday: "short", day: "numeric", month: "short" }))}</span></div>
     <h3 id="pend-${esc(r.id)}">${esc(r.name)}</h3>
-    <div class="targets"><span class="t"><b>${r.km.toFixed(2)}</b> km</span><span class="t"><b>${fmtT(r.moving)}</b></span><span class="t"><b>${fmtT(r.pace)}</b>/km</span>${pf?.watts ? `<span class="t"><b>${Math.round(pf.watts)}</b> W</span>` : ""}${pf?.avgHr ? `<span class="t"><b>${Math.round(pf.avgHr)}</b> bpm</span>` : ""}</div>
+    <div class="targets"><span class="t"><b>${r.km.toFixed(2)}</b> km</span><span class="t"><b>${fmtT(r.moving)}</b></span>${isRunning(r) ? `<span class="t"><b>${fmtT(r.pace)}</b>/km</span>` : r.effort ? `<span class="t">Rel. effort <b>${Math.round(r.effort)}</b></span>` : ""}${pf?.watts ? `<span class="t"><b>${Math.round(pf.watts)}</b> W</span>` : ""}${pf?.avgHr ? `<span class="t"><b>${Math.round(pf.avgHr)}</b> bpm</span>` : ""}</div>
     ${s && s.type !== "rest" ? `<p class="small muted">Planned: ${esc(s.title)} · ${esc(planKm(s).toFixed(1))} km</p>` : `<p class="small muted">No session was planned for this day.</p>`}
     <label class="small" for="log-${esc(r.id)}"><strong>How did it go?</strong> <span class="muted">Optional: why you changed distance or pace, how you felt, sleep, food, niggles.</span></label>
     <textarea id="log-${esc(r.id)}" data-log="${esc(r.id)}" rows="3" placeholder="e.g. Felt flat after a late dinner, so I turned the 800s into a steady 10 km.">${esc(S.logDrafts[r.id] || "")}</textarea>
@@ -894,7 +896,7 @@ function dayRow(d, s) {
   const pend = pendingOn(d);
   const isToday = d === t;
   const dn = `<div><div class="dname">${DAYS[wday(d)]}</div><div class="ddate">${esc(fdate(d, { day: "numeric", month: "short" }))}</div></div>`;
-  const runLine = runs.map((r) => `<div class="done-line">✓ ${r.km.toFixed(2)} km · ${fmtT(r.moving)} · ${fmtP(r.pace)}${S.perf[r.id]?.watts ? " · " + Math.round(S.perf[r.id].watts) + " W" : ""}</div>`).join("");
+  const runLine = runs.map((r) => `<div class="done-line">✓ ${r.km.toFixed(2)} km · ${fmtT(r.moving)}${isRunning(r) ? " · " + fmtP(r.pace) : " · football"}${S.perf[r.id]?.watts ? " · " + Math.round(S.perf[r.id].watts) + " W" : ""}</div>`).join("");
   const pendLine = pend.map((r) => `<div class="pend-line">${r.km.toFixed(2)} km · ${fmtT(r.moving)} · ${fmtP(r.pace)} · waiting for your log</div>`).join("");
   if (!s) {
     if (!runs.length && pend.length) return `<button type="button" class="day pending${isToday ? " today" : ""}" data-open="${esc(d)}">${dn}<div class="body"><div class="row1">${tag("run")}<span class="title">${esc(pend[0].name)}</span><span class="status pend">To log</span></div>${pendLine}</div></button>`;
@@ -925,7 +927,7 @@ function renderCalendar() {
     const cls = ["cell", off ? "off" : "", d === t ? "today" : "", d === RACE ? "race" : "", runs.length ? "ran" : pend.length ? "pend" : ""].join(" ");
     const dayLabel = parse(d).getDate() === 1 || d === start ? fdate(d, { day: "numeric", month: "short" }) : String(parse(d).getDate());
     let inner = `<span class="d">${esc(dayLabel)}</span>`;
-    for (const r of runs) inner += `<span class="r num">${r.km.toFixed(1)}</span><span class="rp">${esc(fmtT(r.pace))}/km</span>`;
+    for (const r of runs) inner += `<span class="r num">${r.km.toFixed(1)}</span><span class="rp">${isRunning(r) ? esc(fmtT(r.pace)) + "/km" : "Football"}</span>`;
     for (const r of pend) inner += `<span class="r num">${r.km.toFixed(1)}</span><span class="miss" style="color:var(--warn)">To log</span>`;
     if (s && s.type !== "rest" && !runs.length && !pend.length) inner += d < t ? `<span class="miss">Missed</span>` : `<span class="p ${(TYPES[s.type] || [])[1] || ""}">${esc(SHORT[s.type] || "Run")}</span>`;
     if (d === RACE && !runs.length) inner += `<span class="p race">Race</span>`;
@@ -1107,7 +1109,7 @@ function runDetail(r, s) {
   let h = `<section class="statrow">
     <div class="stat"><div class="k">Distance</div><div class="v">${r.km.toFixed(2)} km</div></div>
     <div class="stat"><div class="k">Time</div><div class="v">${fmtT(r.moving)}</div></div>
-    <div class="stat"><div class="k">Avg pace</div><div class="v">${fmtT(r.pace)}</div></div>
+    ${isRunning(r) ? `<div class="stat"><div class="k">Avg pace</div><div class="v">${fmtT(r.pace)}</div></div>` : r.effort ? `<div class="stat"><div class="k">Rel. effort</div><div class="v">${Math.round(r.effort)}</div></div>` : ""}
     ${wp ? `<div class="stat"><div class="k">Work pace</div><div class="v">${fmtT(wp)}</div></div>` : ""}
     ${pf?.watts ? `<div class="stat"><div class="k">Power</div><div class="v">${Math.round(pf.watts)} W</div></div>` : ""}
     ${pf?.avgHr ? `<div class="stat"><div class="k">Avg HR</div><div class="v">${Math.round(pf.avgHr)}</div></div>` : ""}
