@@ -27,8 +27,8 @@
    "id": "w2-tue",
    "date": "2026-11-10",
    "type": "tempo",
-   "title": "Tempo: 3 × 8 min",
-   "details": "2 km warm-up + 4 × 20 s strides · 3 × 8 min @ 4:28–4:34/km, 2 min easy jog · 1.5 km cool-down.",
+   "title": "Tempo: 3 × 1.8 km",
+   "details": "2 km warm-up + 4 × 20 s strides · 3 × 1.8 km @ 4:28–4:34/km, 400 m easy jog · 1.5 km cool-down.",
    "shoe": "cloudmonster",
    "tips": [
     "Comfortably hard: short phrases, not full sentences.",
@@ -69,14 +69,14 @@
      "label": "Tempo",
      "reps": 3,
      "work": {
-      "sec": 480,
+      "km": 1.8,
       "pace": [
        268,
        274
       ]
      },
      "rest": {
-      "sec": 120,
+      "km": 0.4,
       "pace": [
        380,
        420
@@ -101,7 +101,7 @@
    "hrMin": 176,
    "hrMax": 186,
    "why": "",
-   "distanceKm": 10.1
+   "distanceKm": 10.4
   },
   {
    "id": "w2-wed",
@@ -159,7 +159,7 @@
    "date": "2026-11-12",
    "type": "goalpace",
    "title": "Goal pace: 5 × 1 km",
-   "details": "2 km warm-up + 4 × 20 s strides · 5 × 1 km @ 3:57–4:01/km, 90 s easy jog · 1.5 km cool-down.",
+   "details": "2 km warm-up + 4 × 20 s strides · 5 × 1 km @ 3:57–4:01/km, 300 m easy jog · 1.5 km cool-down.",
    "shoe": "vaporfly",
    "tips": [
     "Rep 1 at 4:00, not 3:56 like last Friday. Even reps win.",
@@ -207,7 +207,7 @@
       ]
      },
      "rest": {
-      "sec": 90,
+      "km": 0.3,
       "pace": [
        380,
        420
@@ -232,7 +232,7 @@
    "hrMin": 186,
    "hrMax": 199,
    "why": "",
-   "distanceKm": 10.1
+   "distanceKm": 10.4
   },
   {
    "id": "w2-fri",
@@ -306,7 +306,7 @@
    "hrMin": 135,
    "hrMax": 160,
    "why": "",
-   "distanceKm": 10.0
+   "distanceKm": 10
   }
  ],
  "generatedAt": 1794223677983
