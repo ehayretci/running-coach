@@ -1,0 +1,313 @@
+{
+ "weekStart": "2026-11-09",
+ "notes": "Tired Monday after Sunday's match. Travelling to Lisbon Friday: no run. Weekend free, more time. Push for sub-20.",
+ "summary": "",
+ "sessions": [
+  {
+   "id": "w2-mon",
+   "date": "2026-11-09",
+   "type": "rest",
+   "title": "Rest",
+   "details": "Recover from Sunday's match. 10 min of mobility.",
+   "shoe": "none",
+   "tips": [
+    "Calves, hips and hamstrings: 10 min is enough."
+   ],
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "why": "",
+   "distanceKm": 0
+  },
+  {
+   "id": "w2-tue",
+   "date": "2026-11-10",
+   "type": "tempo",
+   "title": "Tempo: 3 × 8 min",
+   "details": "2 km warm-up + 4 × 20 s strides · 3 × 8 min @ 4:28–4:34/km, 2 min easy jog · 1.5 km cool-down.",
+   "shoe": "cloudmonster",
+   "tips": [
+    "Comfortably hard: short phrases, not full sentences.",
+    "Hold the same pace in all 3 reps. Don't speed up in rep 1.",
+    "Lap each rep and each jog."
+   ],
+   "segments": [
+    {
+     "label": "Warm-up",
+     "km": 2,
+     "pace": [
+      330,
+      360
+     ]
+    },
+    {
+     "kind": "strides",
+     "label": "Stride",
+     "reps": 4,
+     "work": {
+      "sec": 20,
+      "pace": [
+       205,
+       220
+      ]
+     },
+     "rest": {
+      "sec": 60,
+      "pace": [
+       720,
+       720
+      ],
+      "label": "Walk back"
+     }
+    },
+    {
+     "kind": "reps",
+     "label": "Tempo",
+     "reps": 3,
+     "work": {
+      "sec": 480,
+      "pace": [
+       268,
+       274
+      ]
+     },
+     "rest": {
+      "sec": 120,
+      "pace": [
+       380,
+       420
+      ],
+      "label": "Easy jog"
+     },
+     "dropLastRest": true
+    },
+    {
+     "label": "Cool-down",
+     "km": 1.5,
+     "pace": [
+      330,
+      370
+     ]
+    }
+   ],
+   "paceMin": 268,
+   "paceMax": 274,
+   "powerMin": 340,
+   "powerMax": 355,
+   "hrMin": 176,
+   "hrMax": 186,
+   "why": "",
+   "distanceKm": 10.1
+  },
+  {
+   "id": "w2-wed",
+   "date": "2026-11-11",
+   "type": "easy",
+   "title": "Easy run + strides",
+   "details": "5 km easy, then 4 × 20 s strides with 60 s walk-back.",
+   "shoe": "vomero",
+   "tips": [
+    "Keep HR under 158.",
+    "Strides fast but relaxed."
+   ],
+   "segments": [
+    {
+     "label": "Easy",
+     "km": 5,
+     "pace": [
+      330,
+      355
+     ]
+    },
+    {
+     "kind": "strides",
+     "label": "Stride",
+     "reps": 4,
+     "work": {
+      "sec": 20,
+      "pace": [
+       205,
+       220
+      ]
+     },
+     "rest": {
+      "sec": 60,
+      "pace": [
+       720,
+       720
+      ],
+      "label": "Walk back"
+     },
+     "dropLastRest": true
+    }
+   ],
+   "paceMin": 330,
+   "paceMax": 355,
+   "powerMin": 265,
+   "powerMax": 285,
+   "hrMin": 135,
+   "hrMax": 158,
+   "why": "",
+   "distanceKm": 5.6
+  },
+  {
+   "id": "w2-thu",
+   "date": "2026-11-12",
+   "type": "goalpace",
+   "title": "Goal pace: 5 × 1 km",
+   "details": "2 km warm-up + 4 × 20 s strides · 5 × 1 km @ 3:57–4:01/km, 90 s easy jog · 1.5 km cool-down.",
+   "shoe": "vaporfly",
+   "tips": [
+    "Rep 1 at 4:00, not 3:56 like last Friday. Even reps win.",
+    "Jog the recoveries, don't walk, even slowly.",
+    "Eat 3+ h before. Stitch? Breathe out hard on the opposite foot strike."
+   ],
+   "segments": [
+    {
+     "label": "Warm-up",
+     "km": 2,
+     "pace": [
+      330,
+      360
+     ]
+    },
+    {
+     "kind": "strides",
+     "label": "Stride",
+     "reps": 4,
+     "work": {
+      "sec": 20,
+      "pace": [
+       205,
+       220
+      ]
+     },
+     "rest": {
+      "sec": 60,
+      "pace": [
+       720,
+       720
+      ],
+      "label": "Walk back"
+     }
+    },
+    {
+     "kind": "reps",
+     "label": "1 km rep",
+     "reps": 5,
+     "work": {
+      "km": 1.0,
+      "pace": [
+       237,
+       241
+      ]
+     },
+     "rest": {
+      "sec": 90,
+      "pace": [
+       380,
+       420
+      ],
+      "label": "Easy jog"
+     },
+     "dropLastRest": true
+    },
+    {
+     "label": "Cool-down",
+     "km": 1.5,
+     "pace": [
+      330,
+      370
+     ]
+    }
+   ],
+   "paceMin": 237,
+   "paceMax": 241,
+   "powerMin": 388,
+   "powerMax": 400,
+   "hrMin": 186,
+   "hrMax": 199,
+   "why": "",
+   "distanceKm": 10.1
+  },
+  {
+   "id": "w2-fri",
+   "date": "2026-11-13",
+   "type": "rest",
+   "title": "Travel to Lisbon",
+   "details": "No run.",
+   "shoe": "none",
+   "tips": [],
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "why": "",
+   "distanceKm": 0
+  },
+  {
+   "id": "w2-sat",
+   "date": "2026-11-14",
+   "type": "rest",
+   "title": "Rest",
+   "details": "Settle in after travel.",
+   "shoe": "none",
+   "tips": [],
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "why": "",
+   "distanceKm": 0
+  },
+  {
+   "id": "w2-sun",
+   "date": "2026-11-15",
+   "type": "long",
+   "title": "Long run, fast finish",
+   "details": "8 km easy, then 2 km steady @ 4:38–4:45/km.",
+   "shoe": "cloudmonster",
+   "tips": [
+    "Flat riverfront route (e.g. Belém) for the fast finish.",
+    "Bring water if it's warm."
+   ],
+   "segments": [
+    {
+     "label": "Easy",
+     "km": 8,
+     "pace": [
+      330,
+      355
+     ]
+    },
+    {
+     "label": "Steady finish",
+     "km": 2,
+     "pace": [
+      278,
+      285
+     ]
+    }
+   ],
+   "paceMin": 330,
+   "paceMax": 355,
+   "powerMin": 265,
+   "powerMax": 285,
+   "hrMin": 135,
+   "hrMax": 160,
+   "why": "",
+   "distanceKm": 10.0
+  }
+ ],
+ "generatedAt": 1794223677983
+}
