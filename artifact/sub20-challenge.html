@@ -558,10 +558,11 @@ function powerModel() {
   const base5kW = base ? S.perf[base.run.id]?.watts : undefined;
   return { ratio, goalW: ratio * (5000 / GOAL_S), base5kW, n: pts.length };
 }
+/** Max HR set by you (you've hit 203 running and 207 at football). Zones use Strava's %-of-max split. */
+const MAX_HR = 210;
 function hrZones() {
-  const z = S.zones?.heart_rate_zones;
-  if (!Array.isArray(z) || z.length < 5) return null;
-  return z.map((x, i) => ({ zone: i + 1, min: x.min, max: x.max }));
+  const b = [0.65, 0.81, 0.89, 0.97].map((f) => Math.round(MAX_HR * f));
+  return [{ zone: 1, min: 0, max: b[0] - 1 }, { zone: 2, min: b[0], max: b[1] - 1 }, { zone: 3, min: b[1], max: b[2] - 1 }, { zone: 4, min: b[2], max: b[3] - 1 }, { zone: 5, min: b[3], max: null }];
 }
 function workPace(run, s) {
   if (!s || !HARD.includes(s.type) || !s.paceMax) return;
@@ -603,7 +604,7 @@ Coaching rules:
 - Be strictly data-driven and honest. Never flatter or inflate. If the numbers say the goal is unlikely, say so plainly with the numbers, then still give the best plan to get as close as possible.
 - Paces come from CURRENT fitness in the data, except dedicated goal-pace work (about 4:00/km).
 - Hard days (intervals, tempo, goal pace, time trial) never on back-to-back days; normally 2 hard sessions a week, 3 only if clearly coping; no long run the day before a hard session; volume rises gradually (≤10–15% over recent weeks); at least one rest day; taper over the final 10 days; nothing hard within 2 days of the race.
-- The athlete's runs currently record running POWER but NOT heart rate. Give power targets (watts) from the power data provided, and HR targets from their Strava HR zones as a guide for when they wear a HR strap. Say which to trust on each run.
+- The athlete's runs record running POWER and HEART RATE. Max HR is 210 (set by the athlete); give HR targets from the HR zones provided, plus power targets from the power data. Easy runs: trust HR; short reps: trust pace/power (HR lags).
 - Shoes — choose one per run, taking the Strava mileage in the data into account:
   vomero = Nike Vomero Plus, max-cushion daily trainer, ≈1 year old → easy, recovery, most long runs.
   cloudmonster = On Cloudmonster 3 Hyper, brand new → break it in on 2–3 easy/steady runs first, then tempo, longer intervals, long runs with fast finishes.
@@ -631,7 +632,7 @@ function context(weekStart, asOf = today()) {
   if (sp) L.push(`STRAVA'S OWN 5K ESTIMATE: ${sp.time}${sp.is_estimated ? " (estimated by Strava)" : ""}.`);
   if (pw) L.push(`POWER: median ${pw.ratio.toFixed(1)} W per m/s over ${pw.n} runs → goal pace needs ≈${Math.round(pw.goalW)} W.${pw.base5kW ? ` Baseline 5K averaged ${Math.round(pw.base5kW)} W.` : ""}`);
   { const sk = shoeKm().shoes; L.push("SHOES (km = estimate before 2 Nov + runs since, each run assumed in the shoe its plan picked):\n" + Object.entries(sk).map(([k, v]) => `- ${k}: ${SHOES[k].name}, ≈${v.total.toFixed(0)} km`).join("\n")); }
-  L.push(z ? `HR ZONES (Strava, from max HR): ${z.map((x) => `Z${x.zone} ${x.min}–${x.max ?? "max"}`).join(", ")}. HR is not recorded on recent runs.` : "HR zones: unknown.");
+  L.push(z ? `HR ZONES (max HR ${MAX_HR}, set by the athlete): ${z.map((x) => `Z${x.zone} ${x.min}–${x.max ?? "max"}`).join(", ")}.` : "HR zones: unknown.");
   L.push("RUNS:");
   const recent = S.runs.filter((r) => r.date >= addDays(asOf, -35) && r.date <= asOf);
   for (const r of recent) {
@@ -1031,7 +1032,8 @@ function renderProgress() {
     <section class="card"><h3>Power & heart rate</h3><dl class="kv">
       ${pw?.base5kW ? `<dt>Baseline 5K power</dt><dd>${Math.round(pw.base5kW)} W · ${(pw.base5kW / 65).toFixed(1)} W/kg</dd>` : ""}
       ${pw ? `<dt>Power needed for 19:59</dt><dd>≈${Math.round(pw.goalW)} W</dd><dt>Watts per m/s (median, ${pw.n} runs)</dt><dd>${pw.ratio.toFixed(1)}</dd>` : `<dt>Power</dt><dd class="muted">no data</dd>`}
-      ${z ? z.map((x) => `<dt>HR zone ${x.zone}</dt><dd>${x.min}${x.max ? "–" + x.max : "+"} bpm</dd>`).join("") : ""}
+      <dt>Max HR</dt><dd>${MAX_HR} bpm</dd>
+      ${z ? z.map((x) => `<dt>HR zone ${x.zone}</dt><dd>${x.min ? x.min : "<"}${x.max ? (x.min ? "–" : "") + x.max : "+"} bpm</dd>`).join("") : ""}
     </dl><p class="small muted">${challengeRuns().some((r) => S.perf[r.id]?.hasHr) ? "Heart rate is being recorded." : "Your recent runs have no heart-rate data, so power is the effort measure. HR targets assume a strap or watch."}</p></section></div>`;
 
   // shoes (from the plan, not Strava)
