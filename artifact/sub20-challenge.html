@@ -848,10 +848,9 @@ function pendingCard(r) {
     <div class="prof-head"><span class="eyebrow">New run to log</span><span class="small muted">${esc(fdate(r.date, { weekday: "short", day: "numeric", month: "short" }))}</span></div>
     <h3 id="pend-${esc(r.id)}">${esc(r.name)}</h3>
     <div class="targets"><span class="t"><b>${r.km.toFixed(2)}</b> km</span><span class="t"><b>${fmtT(r.moving)}</b></span>${isRunning(r) ? `<span class="t"><b>${fmtT(r.pace)}</b>/km</span>` : r.effort ? `<span class="t">Rel. effort <b>${Math.round(r.effort)}</b></span>` : ""}${pf?.watts ? `<span class="t"><b>${Math.round(pf.watts)}</b> W</span>` : ""}${pf?.avgHr ? `<span class="t"><b>${Math.round(pf.avgHr)}</b> bpm</span>` : ""}</div>
-    ${s && s.type !== "rest" ? `<p class="small muted">Planned: ${esc(s.title)} · ${esc(planKm(s).toFixed(1))} km</p>` : `<p class="small muted">No session was planned for this day.</p>`}
-    <label class="small" for="log-${esc(r.id)}"><strong>How did it go?</strong> <span class="muted">Optional: why you changed distance or pace, how you felt, sleep, food, niggles.</span></label>
-    <textarea id="log-${esc(r.id)}" data-log="${esc(r.id)}" rows="3" placeholder="e.g. Felt flat after a late dinner, so I turned the 800s into a steady 10 km.">${esc(S.logDrafts[r.id] || "")}</textarea>
-    <div><div class="small" style="margin-bottom:4px"><strong>Effort</strong> <span class="muted">(1 = very easy, 10 = all-out)</span></div>
+    <label class="small" for="log-${esc(r.id)}"><strong>How did it go?</strong></label>
+    <textarea id="log-${esc(r.id)}" data-log="${esc(r.id)}" rows="3">${esc(S.logDrafts[r.id] || "")}</textarea>
+    <div><div class="small" style="margin-bottom:4px"><strong>Effort</strong></div>
       <div class="daypick">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<button type="button" data-effort="${n}" data-run="${esc(r.id)}" aria-pressed="${eff === n}">${n}</button>`).join("")}</div></div>
     <div><button class="btn primary" data-act="log" data-run="${esc(r.id)}">Log run${S.sample ? " & analyse" : ""}</button></div>
   </section>`;
