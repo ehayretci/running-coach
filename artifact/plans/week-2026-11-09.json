@@ -1,6 +1,6 @@
 {
  "weekStart": "2026-11-09",
- "notes": "Tired Monday after Sunday's match. Travelling to Lisbon Friday: no run. Weekend free, more time. Push for sub-20.",
+ "notes": "Tired Monday after Sunday's match. Travelling to Lisbon Friday: no run. Weekend free, more time. Push for sub-20. 12 Nov: started sore, faded after 4 reps (too little recovery after Sunday football + fast Tuesday tempo). Sunday changed to easy 8 km.",
  "summary": "",
  "sessions": [
   {
@@ -273,40 +273,32 @@
   {
    "id": "w2-sun",
    "date": "2026-11-15",
-   "type": "long",
-   "title": "Long run, fast finish",
-   "details": "8 km easy, then 2 km steady @ 4:38–4:45/km.",
-   "shoe": "cloudmonster",
+   "type": "easy",
+   "title": "Easy run (Lisbon)",
+   "details": "8 km easy on a flat route (riverfront). No fast finish this week.",
+   "shoe": "vomero",
    "tips": [
-    "Flat riverfront route (e.g. Belém) for the fast finish.",
-    "Bring water if it's warm."
+    "Still sore? Make it 5 km or rest. Recovery first.",
+    "On hills, hold HR under 155 and let pace drop."
    ],
    "segments": [
     {
      "label": "Easy",
      "km": 8,
      "pace": [
-      330,
-      355
-     ]
-    },
-    {
-     "label": "Steady finish",
-     "km": 2,
-     "pace": [
-      278,
-      285
+      335,
+      365
      ]
     }
    ],
-   "paceMin": 330,
-   "paceMax": 355,
-   "powerMin": 265,
-   "powerMax": 285,
+   "paceMin": 335,
+   "paceMax": 365,
+   "powerMin": 260,
+   "powerMax": 280,
    "hrMin": 135,
-   "hrMax": 160,
+   "hrMax": 155,
    "why": "",
-   "distanceKm": 10
+   "distanceKm": 8.0
   }
  ],
  "generatedAt": 1794223677983

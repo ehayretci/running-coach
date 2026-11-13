@@ -351,7 +351,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 const S = {
   view: location.hash === "#stats" ? "progress" : ["week", "calendar", "progress"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
   runs: [], perf: {}, zones: null, stravaErr: null, stravaLoading: true,
-  weeks: {}, analyses: {}, logs: {}, logsReady: false, allRuns: [], logDrafts: {}, logEffort: {},
+  weeks: {}, analyses: {}, logs: {}, insights: "", logsReady: false, allRuns: [], logDrafts: {}, logEffort: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
   busy: null, // {kind, ctl}
@@ -388,6 +388,10 @@ async function initStore() {
     for (const doc of snap.docs) { const b = doc.data(); if (b && Array.isArray(b.sessions)) weeks[doc.id] = { ...b, sessions: b.sessions.map((x) => ({ ...x, distanceKm: planKm(x) })) }; }
     S.weeks = weeks; if (!snap.metadata.fromCache) { got |= 1; if (got === 3) { clearTimeout(timer); S.storeErr = null; } }
     S.store = "ready"; render();
+  }, onErr);
+  db.collection("coach").onSnapshot((snap) => {
+    const d = snap.docs.find((x) => x.id === "insights");
+    S.insights = d && typeof d.data()?.text === "string" ? d.data().text : "";
   }, onErr);
   db.collection("logs").onSnapshot((snap) => {
     const l = {};
@@ -664,6 +668,7 @@ function context(weekStart, asOf = today()) {
   const done = S.runs.filter((r) => r.date >= weekStart && r.date < asOf);
   if (done.length) L.push("ALREADY RUN THIS WEEK: " + done.map((r) => `${r.date} ${r.km.toFixed(1)} km`).join(", "));
   L.push("NOT IN THE DATA: sleep, HRV, resting HR, injuries — rely on the athlete's notes.");
+  if (S.insights) L.push("COACHING RULES AND INSIGHTS LEARNED SO FAR (always apply):\n" + S.insights.slice(0, 6000));
   return L.join("\n");
 }
 
