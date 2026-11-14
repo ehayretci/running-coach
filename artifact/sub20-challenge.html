@@ -1,4 +1,4 @@
-<title>Sub 20 Challenge</title>
+<title>Running Coach</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -195,6 +195,9 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 .kv dt .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; }
 .statrow .stat .small { margin-top: 2px; }
 tr[data-open]:hover td { background: var(--surface-2); }
+.goalform label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--fg-2); }
+.goalform input, .goalform select { font: inherit; font-size: 1rem; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-width: 0; width: 100%; box-sizing: border-box; }
+.goalform { display: flex; flex-direction: column; gap: 12px; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 0.9rem; }
 .kv dt { color: var(--fg-2); }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -272,10 +275,11 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 <header class="top">
   <div class="wrap top-inner">
     <div class="brand">
-      <span class="brand-mark">Sub 20 Challenge</span>
+      <span class="brand-mark">Running Coach</span>
       <span class="brand-sub" id="countdown"></span>
     </div>
     <nav class="tabs" id="tabs" aria-label="Sections">
+      <button type="button" data-view="goal">Goal</button>
       <button type="button" data-view="week">Week</button>
       <button type="button" data-view="calendar">Calendar</button>
       <button type="button" data-view="stats">Stats</button>
@@ -289,10 +293,11 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 </main>
 
 <nav class="bottom" id="bottom" aria-label="Sections">
+  <button type="button" data-view="goal">Goal</button>
   <button type="button" data-view="week">Week</button>
   <button type="button" data-view="calendar">Calendar</button>
   <button type="button" data-view="stats">Stats</button>
-      <button type="button" data-view="records">Records</button>
+  <button type="button" data-view="records">Records</button>
 </nav>
 
 <div class="scrim" id="scrim" hidden>
@@ -301,11 +306,16 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 
 <script>
 "use strict";
-/* ================= Challenge constants ================= */
-const START = "2026-11-02";          // baseline 5K
-const RACE = "2026-12-10";
-const GOAL_S = 19 * 60 + 59;         // 19:59
-const GOAL_PACE = GOAL_S / 5;
+/* ================= Goal (editable on the Goal tab; stored in coach/goal) ================= */
+const DEFAULT_GOAL = { name: "Sub 20 5K", distanceM: 5000, targetS: 19 * 60 + 59, date: "2026-12-10", startDate: "2026-11-02", history: [] };
+let GOAL = DEFAULT_GOAL, START, RACE, GOAL_S, GOAL_M, GOAL_PACE, GOAL_VDOT, GOAL_DIST;
+const DISTS = [[5000, "5K"], [10000, "10K"], [21097.5, "Half marathon"], [42195, "Marathon"]];
+const distLabel = (m) => DISTS.find(([x]) => Math.abs(x - m) < 1)?.[1] || `${+(m / 1000).toFixed(2)} km`;
+function applyGoal(g) {
+  GOAL = { ...DEFAULT_GOAL, ...(g || {}) };
+  START = GOAL.startDate; RACE = GOAL.date; GOAL_S = GOAL.targetS; GOAL_M = GOAL.distanceM;
+  GOAL_PACE = GOAL_S / (GOAL_M / 1000); GOAL_VDOT = vdot(GOAL_M, GOAL_S); GOAL_DIST = distLabel(GOAL_M);
+}
 const CONTEXT_FROM = "2026-10-05";   // 4 weeks before for training-load context
 const GARMIN = "Garmin";
 const SHOES = {
@@ -316,6 +326,7 @@ const SHOES = {
 };
 /** km each pair had before the challenge (Nov 2026): runs from 3 Nov 2025 – 2 Nov 2026,
  *  under 6 km = Vaporfly, 6 km+ = Vomero, × 1.2 for unlogged running. */
+const SHOE_FROM = "2026-11-02";
 const SHOE_START_KM = { vaporfly: 241, vomero: 352, cloudmonster: 0 };
 const TYPES = {
   run: ["Run", ""], easy: ["Easy", ""], recovery: ["Recovery", ""], long: ["Long", "long"], shakeout: ["Shake-out", ""],
@@ -355,16 +366,17 @@ const velFor = (o) => { const a = 0.000104, b = 0.182258, c = -4.6 - o; return (
 const paceAt = (v, f) => 60000 / velFor(v * f);
 function predictS(v, m) { let lo = 60, hi = 36000; for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (vdot(m, mid) > v) lo = mid; else hi = mid; } return (lo + hi) / 2; }
 const trainPaces = (v) => ({ easy: [paceAt(v, 0.74), paceAt(v, 0.65)], thr: paceAt(v, 0.88), int: paceAt(v, 0.98), rep: paceAt(v, 1.07) });
-const GOAL_VDOT = vdot(5000, GOAL_S);
+applyGoal(null);
 
 /* ================= State ================= */
 const S = {
-  view: location.hash === "#progress" ? "stats" : ["week", "calendar", "stats", "records"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
+  view: location.hash === "#progress" ? "stats" : ["goal", "week", "calendar", "stats", "records"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "goal",
   runs: [], perf: {}, zones: null, vo2: null, prs: null, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {}, logs: {}, insights: "", logsReady: false, allRuns: [], logDrafts: {}, logEffort: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
   busy: null, // {kind, ctl}
+  goalEdit: false, goalErr: null, goalDraft: {}, goalReady: false,
   drawer: null, // {date} or {runId}
 };
 let mcp = null, db = null;
@@ -402,6 +414,9 @@ async function initStore() {
   db.collection("coach").onSnapshot((snap) => {
     const d = snap.docs.find((x) => x.id === "insights");
     S.insights = d && typeof d.data()?.text === "string" ? d.data().text : "";
+    const g = snap.docs.find((x) => x.id === "goal")?.data();
+    if (g && g.distanceM && g.targetS && g.date && g.startDate) { applyGoal(g); applyLogs(); }
+    S.goalReady = true; render();
   }, onErr);
   db.collection("logs").onSnapshot((snap) => {
     const l = {};
@@ -517,7 +532,7 @@ function shoeKm() {
   const out = {};
   for (const k of ["vomero", "cloudmonster", "vaporfly"]) out[k] = { start: SHOE_START_KM[k] || 0, challenge: 0 };
   let untracked = 0;
-  for (const r of challengeRuns()) { const k = shoeOf(r); if (k) out[k].challenge += r.km; else untracked += r.km; }
+  for (const r of S.runs.filter((x) => x.date >= SHOE_FROM && isRunning(x))) { const k = shoeOf(r); if (k) out[k].challenge += r.km; else untracked += r.km; }
   for (const k in out) out[k].total = out[k].start + out[k].challenge;
   return { shoes: out, untracked };
 }
@@ -552,7 +567,7 @@ function garminMsg(e) {
     case "needs_reauth": return "Your Garmin connection has expired. Reconnect Garmin in claude.ai Settings → Connectors, then reload.";
     case "server_not_connected": return "Garmin isn’t connected. Add the Garmin connector in claude.ai Settings → Connectors, then reload.";
     case "selection_required": return "You have more than one Garmin connector — choose one when claude.ai asks, then reload.";
-    case "not_in_manifest": case "approval_required": return "Sub 20 Challenge needs your permission to read Garmin. Tap “Load runs” and allow it.";
+    case "not_in_manifest": case "approval_required": return "Running Coach needs your permission to read Garmin. Tap “Load runs” and allow it.";
     case "blocked_by_policy": return "Your organisation blocks the Garmin connector for this page.";
     case "server_unavailable": case "upstream_error": return "Garmin didn’t answer just now. Try again in a minute.";
     case "tool_error": return "Garmin reported an error: " + (e.message || "unknown") + ".";
@@ -607,9 +622,9 @@ function prediction(asOf = today()) {
     const xs = pts.map(([w]) => daysBetween(START, w) / 7), ys = pts.map(([, y]) => y);
     const mx = xs.reduce((a, b) => a + b) / xs.length, my = ys.reduce((a, b) => a + b) / ys.length;
     const den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
-    if (den > 0) { const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / den; trend = { slope, atRace: predictS(my + slope * (daysBetween(START, RACE) / 7 - mx), 5000), n: pts.length }; }
+    if (den > 0) { const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / den; trend = { slope, atRace: predictS(my + slope * (daysBetween(START, RACE) / 7 - mx), GOAL_M), n: pts.length }; }
   }
-  return { v, s: predictS(v, 5000), basis: best, base, ceiling: sb && sb.v > v ? { s: predictS(sb.v, 5000), basis: sb } : null, trend };
+  return { v, s: predictS(v, GOAL_M), basis: best, base, ceiling: sb && sb.v > v ? { s: predictS(sb.v, GOAL_M), basis: sb } : null, trend };
 }
 /** Power: watts per (m/s) from runs with power, and the 5K power you've shown */
 function powerModel() {
@@ -623,7 +638,7 @@ function powerModel() {
   const ratio = ratios[Math.floor(ratios.length / 2)];
   const base = baseline();
   const base5kW = base ? S.perf[base.run.id]?.watts : undefined;
-  return { ratio, goalW: ratio * (5000 / GOAL_S), base5kW, n: pts.length };
+  return { ratio, goalW: ratio * (GOAL_M / GOAL_S), base5kW, n: pts.length };
 }
 /** Max HR set by you (you've hit 203 running and 207 at football). Zones: 65/81/89/97% of max. */
 const MAX_HR = 210;
@@ -665,7 +680,7 @@ function validate(sessions, weekStart) {
 }
 
 /* ================= Coach context for Claude ================= */
-const COACH = `You are the coach inside the Sub 20 Challenge app. Your one athlete (Erim, 65 kg, London) is training for "Sub 20 Challenge": a 5K under 20:00 on Thursday 10 December 2026.
+const COACH = () => `You are the coach inside the Running Coach app. Your one athlete (Erim, 65 kg, London). Current goal "${GOAL.name}": ${GOAL_DIST} in ${fmtT(GOAL_S)} on ${fdate(RACE, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} (training since ${START}).
 
 Coaching rules:
 - Be strictly data-driven and honest. Never flatter or inflate. If the numbers say the goal is unlikely, say so plainly with the numbers, then still give the best plan to get as close as possible.
@@ -686,10 +701,10 @@ function context(weekStart, asOf = today()) {
   const pw = powerModel();
   const z = hrZones();
   L.push(`TODAY: ${asOf} (${DAYS[wday(asOf)]}). WEEK: ${weekStart} – ${addDays(weekStart, 6)}.`);
-  L.push(`GOAL: 5K under ${fmtT(GOAL_S)} (goal pace ${fmtP(GOAL_PACE)}) on ${RACE} — ${daysBetween(asOf, RACE)} days away.`);
+  L.push(`GOAL: “${GOAL.name}” — ${GOAL_DIST} in ${fmtT(GOAL_S)} (goal pace ${fmtP(GOAL_PACE)}) on ${RACE} — ${daysBetween(asOf, RACE)} days away.`);
   if (p) {
     L.push(`BASELINE: ${p.base ? `${fmtT(p.base.s)} 5K on ${START} (“${p.base.run.name}”) — ${BASELINE_NOTE}` : "none found"}.`);
-    L.push(`CURRENT FITNESS (calculated from data, VDOT method): VDOT ${p.v.toFixed(1)} → predicted 5K ${fmtT(p.s)}${p.basis ? ` (best effort: ${p.basis.label} in “${p.basis.run.name}” on ${p.basis.run.date})` : ""}. Sub-20 needs VDOT ${GOAL_VDOT.toFixed(1)}.`);
+    L.push(`CURRENT FITNESS (calculated from data, VDOT method): VDOT ${p.v.toFixed(1)} → predicted ${GOAL_DIST} ${fmtT(p.s)}${p.basis ? ` (best effort: ${p.basis.label} in “${p.basis.run.name}” on ${p.basis.run.date})` : ""}. The goal needs VDOT ${GOAL_VDOT.toFixed(1)}.`);
     if (p.ceiling) L.push(`Short-effort ceiling: ${fmtT(p.ceiling.s)} (from ${p.ceiling.basis.label}).`);
     if (p.trend) L.push(`Trend: ${p.trend.slope >= 0 ? "+" : ""}${p.trend.slope.toFixed(2)} VDOT/week over ${p.trend.n} weeks → projects ${fmtT(p.trend.atRace)} on race day.`);
     const tp = trainPaces(p.v);
@@ -742,7 +757,7 @@ function context(weekStart, asOf = today()) {
 function sampleMsg(e) {
   switch (e?.code) {
     case "cancelled": return null;
-    case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed": return "Claude isn’t available to this page. Allow Sub 20 Challenge to use Claude when asked, or open it in claude.ai.";
+    case "not_granted": case "sampling_disabled": case "not_declared": case "capability_disabled": case "capability_removed": return "Claude isn’t available to this page. Allow Running Coach to use Claude when asked, or open it in claude.ai.";
     case "rate_limited": return "You’ve hit a Claude usage limit. Try again a little later.";
     case "session_expired": return "Your claude.ai session expired. Sign in again and reload.";
     case "invalid_json": return "The coach’s answer came back garbled. Try again.";
@@ -769,7 +784,7 @@ async function analyse(run) {
   const runCtx = context(monday(run.date), run.date).split("\n").filter((l) => !/^(GOAL|BASELINE|CURRENT FITNESS|Short-effort|Trend|GARMIN VO2MAX)/.test(l)).join("\n");
   const lg = S.logs[run.id];
   const note = lg && (lg.comment || lg.effort) ? `\nATHLETE'S OWN NOTES ON THIS RUN (take them into account — they explain why it went the way it did; say so where they change your read): ${lg.effort ? `effort felt ${lg.effort}/10. ` : ""}${lg.comment ? `"${lg.comment}"` : ""}` : "";
-  const prompt = `${COACH}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off sub-20 is, or whether the goal is realistic — that lives on the Stats page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
+  const prompt = `${COACH()}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off the goal is, or whether the goal is realistic — that lives on the Stats page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for the goal. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
   const ctl = new AbortController();
   S.busy = { kind: "analyse", ctl, runId: run.id }; render();
   try {
@@ -987,7 +1002,7 @@ function dayRow(d, s) {
 function renderCalendar() {
   const t = today();
   const cur = monday(t);
-  let h = `<div class="week-head"><div><div class="eyebrow">Sub 20 Challenge</div><div class="range">2 Nov – 10 Dec</div></div></div>${banners()}${pendingBanner()}
+  let h = `<div class="week-head"><div><div class="eyebrow">${esc(GOAL.name)}</div><div class="range">${esc(fdate(START, { day: "numeric", month: "short" }))} – ${esc(fdate(RACE, { day: "numeric", month: "short" }))}</div></div></div>${banners()}${pendingBanner()}
   <div class="legend"><span><i class="sw" style="background:color-mix(in srgb, var(--good) 30%, var(--surface));border:1px solid var(--good)"></i>Run done</span><span><i class="sw" style="background:color-mix(in srgb, var(--warn) 22%, var(--surface));border:1px solid var(--warn)"></i>To log</span><span><i class="sw" style="border-bottom:2px dashed var(--hard);border-radius:0;height:8px"></i>Planned (this week)</span><span><i class="sw" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>Race day</span></div>`;
   const start = monday(START), end = addDays(monday(RACE), 6);
   h += `<div class="cal">${DAYS.map((d) => `<div class="dow">${d}</div>`).join("")}`;
@@ -1007,7 +1022,7 @@ function renderCalendar() {
   }
   h += `</div>`;
   const nRuns = challengeRuns().length, km = challengeRuns().reduce((a, r) => a + r.km, 0);
-  h += `<p class="muted small num">${nRuns} run${nRuns === 1 ? "" : "s"} · ${km.toFixed(1)} km since 2 Nov. Only this week has a plan. Next week’s appears when you ask Claude for it on Monday.</p>`;
+  h += `<p class="muted small num">${nRuns} run${nRuns === 1 ? "" : "s"} · ${km.toFixed(1)} km since ${esc(fdate(START, { day: "numeric", month: "short" }))}. Only this week has a plan. Next week’s appears when you ask Claude for it on Monday.</p>`;
   return h;
 }
 
@@ -1037,12 +1052,12 @@ function chartPred(points) {
   const Y = (s) => H - B - ((hi - s) / (hi - lo)) * (H - T - B); // faster times plot higher
   const ticks = [lo, Math.round((lo + hi) / 2 / 30) * 30, hi];
   let g = ticks.map((v) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${L - 5}" y="${Y(v) + 3}" text-anchor="end">${fmtT(v)}</text>`).join("");
-  g += `<line class="goalline" x1="${L}" x2="${W - R}" y1="${Y(GOAL_S)}" y2="${Y(GOAL_S)}"/><text class="goallbl" x="${W - R}" y="${Y(GOAL_S) - 5}" text-anchor="end">Goal 19:59</text>`;
+  g += `<line class="goalline" x1="${L}" x2="${W - R}" y1="${Y(GOAL_S)}" y2="${Y(GOAL_S)}"/><text class="goallbl" x="${W - R}" y="${Y(GOAL_S) - 5}" text-anchor="end">Goal ${fmtT(GOAL_S)}</text>`;
   g += `<path class="line" d="${points.map((p, i) => `${i ? "L" : "M"}${x(p.d).toFixed(1)},${Y(p.s).toFixed(1)}`).join(" ")}"/>`;
-  g += points.map((p) => `<g data-tip="${esc(fdate(p.d))}: ${esc(p.label)} → 5K equivalent ${fmtT(p.s)}"><circle cx="${x(p.d)}" cy="${Y(p.s)}" r="12" fill="transparent"/><circle class="dot" cx="${x(p.d)}" cy="${Y(p.s)}" r="4"/></g>`).join("");
+  g += points.map((p) => `<g data-tip="${esc(fdate(p.d))}: ${esc(p.label)} → ${esc(GOAL_DIST)} equivalent ${fmtT(p.s)}"><circle cx="${x(p.d)}" cy="${Y(p.s)}" r="12" fill="transparent"/><circle class="dot" cx="${x(p.d)}" cy="${Y(p.s)}" r="4"/></g>`).join("");
   const first = points[0].d, last = points[points.length - 1].d;
   g += `<text class="ax" x="${L}" y="${H - 6}">${esc(fdate(first, { day: "numeric", month: "short" }))}</text><text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${esc(fdate(last, { day: "numeric", month: "short" }))}</text>`;
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="5K-equivalent of your best effort per run">${g}</svg><div class="tip" aria-live="polite"></div></div>`;
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Goal-distance equivalent of your best effort per run">${g}</svg><div class="tip" aria-live="polite"></div></div>`;
 }
 
 /** Generic line chart: pts [{d, v, tip}], fmt for axis, optional target line {v, label}. Higher = better unless invert. */
@@ -1114,33 +1129,19 @@ function renderStats() {
   const pw = powerModel();
   const z = hrZones();
   const left = daysBetween(t, RACE);
-  let h = `<div class="week-head"><div><div class="eyebrow">Stats</div><div class="range">${left} days to go</div></div></div>${banners()}${pendingBanner()}`;
+  let h = `<div class="week-head"><div><div class="eyebrow">Stats</div><div class="range">Training data</div></div></div>${banners()}${pendingBanner()}`;
   if (!p && !S.allRuns.length) return h + `<div class="empty">${S.stravaLoading ? `<div class="spinner"></div><p>Reading your Garmin runs…</p>` : `<p>No runs found since ${esc(fdate(START))}.</p>`}</div>`;
   const vt = vo2Trend();
 
-  /* ---- 1. Fitness & prediction ---- */
-  h += secH("Fitness & prediction");
-  h += `<section class="hero">
-    <div><div class="eyebrow">Predicted 5K</div><div class="big">${p ? fmtT(p.s) : "–"}</div><p class="small muted">${p ? `VDOT ${p.v.toFixed(1)}` : ""}</p></div>
-    <div><div class="eyebrow">Goal</div><div class="big goal">19:59</div><p class="small muted">${p ? (p.s > GOAL_S ? `${Math.round(p.s - GOAL_S)} s · VDOT ${GOAL_VDOT.toFixed(1)} needed` : "At goal on current data") : ""}</p></div>
-    <div><div class="eyebrow">Garmin VO2max</div><div class="big">${vt ? vt.latest.toFixed(1) : "–"}</div><p class="small muted">${vt && vt.days ? `${vt.delta >= 0 ? "+" : ""}${vt.delta.toFixed(1)} in ${vt.days} days` : S.vo2 ? "" : "Loading…"}</p></div>
-  </section>`;
-  if (p) {
-    const weeksLeft = Math.max(0.5, left / 7), need = GOAL_VDOT - p.v, perWeek = need / weeksLeft;
-    h += `<div class="card"><dl class="kv">
-      <dt>VDOT gap</dt><dd>${need > 0 ? `+${need.toFixed(1)} · ${perWeek.toFixed(2)}/week` : "none"}</dd>
-      ${p.basis ? `<dt>Based on</dt><dd>${esc(p.basis.label)} · ${esc(fdate(p.basis.run.date, { day: "numeric", month: "short" }))}</dd>` : ""}
-      ${p.ceiling ? `<dt>Short-effort ceiling</dt><dd>${fmtT(p.ceiling.s)}</dd>` : ""}
-      ${p.trend ? `<dt>Trend (${p.trend.n} wk)</dt><dd>${p.trend.slope >= 0 ? "+" : ""}${p.trend.slope.toFixed(2)}/wk → ${fmtT(p.trend.atRace)}</dd>` : ""}
-    </dl></div>`;
-  }
+  /* ---- 1. Fitness ---- */
+  h += secH("Fitness");
   const ppts = [];
   for (const r of S.runs.filter((x) => x.date >= CONTEXT_FROM)) {
     const e = evidence([r]).long.sort((a, b) => b.v - a.v)[0];
-    if (e) ppts.push({ d: r.date, s: predictS(e.v, 5000), label: e.label });
+    if (e) ppts.push({ d: r.date, s: predictS(e.v, GOAL_M), label: e.label });
   }
   h += `<div class="grid2"><section class="card"><h3>VO2max (Garmin)</h3>${vt ? chartLine(vt.pts.map((x) => ({ d: x.date, v: x.v })), { label: "Garmin VO2max trend" }) : `<p class="muted small">${S.vo2 ? "No VO2max data." : "Loading…"}</p>`}</section>
-    <section class="card"><h3>5K-equivalent per run</h3>${chartPred(ppts)}</section></div>`;
+    <section class="card"><h3>${esc(GOAL_DIST)}-equivalent per run</h3>${chartPred(ppts)}</section></div>`;
   if (p) {
     const tp = trainPaces(p.v);
     h += `<section class="card"><h3>Training paces</h3><dl class="kv">
@@ -1179,7 +1180,7 @@ function renderStats() {
     <div class="stat"><div class="k">Stride</div><div class="v">${aStr ? (aStr / 100).toFixed(2) + " m" : "–"}</div><div class="small muted">≈1.40 m at 4:00/km</div></div>
     <div class="stat"><div class="k">Ground contact</div><div class="v">${aGct ? Math.round(aGct) + " ms" : "–"}</div></div>
     <div class="stat"><div class="k">Vert. osc.</div><div class="v">${aVo ? aVo.toFixed(1) + " cm" : "–"}</div></div>
-    ${pw ? `<div class="stat"><div class="k">W per m/s</div><div class="v">${pw.ratio.toFixed(1)}</div><div class="small muted">19:59 ≈ ${Math.round(pw.goalW)} W</div></div>` : ""}
+    ${pw ? `<div class="stat"><div class="k">W per m/s</div><div class="v">${pw.ratio.toFixed(1)}</div><div class="small muted">goal ≈ ${Math.round(pw.goalW)} W</div></div>` : ""}
   </section>`;
   // cadence vs pace per lap (work laps of runs in the last 6 weeks)
   const lapPts = [];
@@ -1225,14 +1226,14 @@ function chartScatter(pts) {
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cadence against pace for each lap">${g}</svg><div class="tip" aria-live="polite"></div></div><p class="small muted">Faster pace to the right.</p>`;
 }
 
-const PR_KEYS = { 1: ["1 km", 1000], 2: ["1 mile", 1609.34], 3: ["5 km", 5000], 4: ["10 km", 10000], 5: ["Half marathon", 21097.5], 7: ["Longest run", null] };
+const PR_KEYS = { 1: ["1 km", 1000], 2: ["1 mile", 1609.34], 3: ["5 km", 5000], 4: ["10 km", 10000], 5: ["Half marathon", 21097.5], 6: ["Marathon", 42195], 7: ["Longest run", null] };
 function renderRecords() {
   let h = `<div class="week-head"><div><div class="eyebrow">Records</div><div class="range">Personal bests</div></div></div>${banners()}`;
   const prs = (Array.isArray(S.prs) ? S.prs : S.prs?.records || []).filter((r) => PR_KEYS[r.type_id]);
-  const pr5 = prs.find((r) => r.type_id === 3);
+  const pr5 = prs.find((r) => PR_KEYS[r.type_id][1] && Math.abs(PR_KEYS[r.type_id][1] - GOAL_M) < 1);
   h += `<section class="hero">
-    <div><div class="eyebrow">5K PR</div><div class="big">${pr5 ? fmtT(Math.floor(pr5.raw_value)) : "–"}</div><p class="small muted">${pr5 ? esc(fdate(pr5.date, { day: "numeric", month: "short", year: "numeric" })) : S.prs ? "" : "Loading…"}</p></div>
-    <div><div class="eyebrow">Target</div><div class="big goal">19:59</div><p class="small muted">${pr5 ? (pr5.raw_value > GOAL_S ? `${Math.floor(pr5.raw_value) - GOAL_S} s to cut` : "Done") : ""}</p></div>
+    <div><div class="eyebrow">${esc(GOAL_DIST)} PR</div><div class="big">${pr5 ? fmtT(Math.floor(pr5.raw_value)) : "–"}</div><p class="small muted">${pr5 ? esc(fdate(pr5.date, { day: "numeric", month: "short", year: "numeric" })) : S.prs ? "" : "Loading…"}</p></div>
+    <div><div class="eyebrow">Target</div><div class="big goal">${fmtT(GOAL_S)}</div><p class="small muted">${pr5 ? (pr5.raw_value > GOAL_S ? `${Math.floor(pr5.raw_value) - GOAL_S} s to cut` : "Done") : ""}</p></div>
   </section>`;
   h += `<section class="card"><h3>All-time (Garmin)</h3>${prs.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Date</th></tr></thead><tbody>${prs.sort((a, b) => a.type_id - b.type_id).map((r) => {
       const [lab, m] = PR_KEYS[r.type_id];
@@ -1246,8 +1247,79 @@ function renderRecords() {
     if (b) rows.push({ lab, m, ...b });
   }
   const longest = challengeRuns().sort((a, b) => b.km - a.km)[0];
-  h += `<section class="card"><h3>Best since 2 Nov</h3>${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Run</th></tr></thead><tbody>${rows.map((x) => `<tr data-open="${esc(x.r.date)}" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="r"><strong>${fmtT(x.s)}</strong></td><td class="r">${fmtP(x.s / (x.m / 1000))}</td><td class="r">${esc(fdate(x.r.date, { day: "numeric", month: "short" }))}</td></tr>`).join("")}${longest ? `<tr data-open="${esc(longest.date)}" style="cursor:pointer"><td>Longest run</td><td class="r"><strong>${longest.km.toFixed(2)} km</strong></td><td class="r">${fmtP(longest.pace)}</td><td class="r">${esc(fdate(longest.date, { day: "numeric", month: "short" }))}</td></tr>` : ""}</tbody></table></div><p class="small muted">From lap splits of logged runs.</p>` : `<p class="muted small">${S.allRuns.some((r) => S.perf[r.id]) ? "No efforts yet." : "Loading…"}</p>`}</section>`;
+  h += `<section class="card"><h3>Best since ${esc(fdate(START, { day: "numeric", month: "short" }))}</h3>${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Run</th></tr></thead><tbody>${rows.map((x) => `<tr data-open="${esc(x.r.date)}" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="r"><strong>${fmtT(x.s)}</strong></td><td class="r">${fmtP(x.s / (x.m / 1000))}</td><td class="r">${esc(fdate(x.r.date, { day: "numeric", month: "short" }))}</td></tr>`).join("")}${longest ? `<tr data-open="${esc(longest.date)}" style="cursor:pointer"><td>Longest run</td><td class="r"><strong>${longest.km.toFixed(2)} km</strong></td><td class="r">${fmtP(longest.pace)}</td><td class="r">${esc(fdate(longest.date, { day: "numeric", month: "short" }))}</td></tr>` : ""}</tbody></table></div><p class="small muted">From lap splits of logged runs.</p>` : `<p class="muted small">${S.allRuns.some((r) => S.perf[r.id]) ? "No efforts yet." : "Loading…"}</p>`}</section>`;
   return h;
+}
+
+
+/* ---------- Goal tab ---------- */
+const hms = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, "0")}:${String(x).padStart(2, "0")}` : `${m}:${String(x).padStart(2, "0")}`; };
+const parseHms = (str) => { const p = String(str).trim().split(":").map(Number); if (!p.length || p.some((x) => !isFinite(x) || x < 0)) return null; return p.reduce((a, x) => a * 60 + x, 0) || null; };
+function renderGoal() {
+  const t = today();
+  const p = prediction();
+  const left = daysBetween(t, RACE);
+  const vt = vo2Trend();
+  let h = `<div class="week-head"><div><div class="eyebrow">Goal</div><div class="range">${esc(GOAL.name)}</div></div><button class="btn" data-act="edit-goal">${S.goalEdit ? "Cancel" : "Edit goal"}</button></div>${banners()}`;
+  if (S.goalEdit) h += goalForm();
+  h += `<section class="hero">
+    <div><div class="eyebrow">Predicted ${esc(GOAL_DIST)}</div><div class="big">${p ? fmtT(p.s) : "–"}</div><p class="small muted">${p ? `VDOT ${p.v.toFixed(1)}` : S.stravaLoading ? "Loading…" : "Needs a run of 3 km+"}</p></div>
+    <div><div class="eyebrow">Goal</div><div class="big goal">${fmtT(GOAL_S)}</div><p class="small muted">${p ? (p.s > GOAL_S ? `${Math.round(p.s - GOAL_S)} s · VDOT ${GOAL_VDOT.toFixed(1)} needed` : "At goal on current data") : `VDOT ${GOAL_VDOT.toFixed(1)} needed`}</p></div>
+    <div><div class="eyebrow">${left >= 0 ? "Days to go" : "Race done"}</div><div class="big">${Math.max(0, left)}</div><p class="small muted">${esc(fdate(RACE, { weekday: "short", day: "numeric", month: "short", year: "numeric" }))}</p></div>
+  </section>`;
+  if (p) {
+    const base = p.base ? predictS(vdot(5000, p.base.s), GOAL_M) : null;
+    const prog = base ? Math.max(0, Math.min(1, (base - p.s) / Math.max(1, base - GOAL_S))) : null;
+    if (prog != null) h += `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="small">Start ${fmtT(base)} → goal ${fmtT(GOAL_S)}</span><span class="small num muted">${Math.round(prog * 100)}%</span></div><div class="gapbar" role="progressbar" aria-valuenow="${Math.round(prog * 100)}" aria-valuemin="0" aria-valuemax="100"><div style="width:${prog * 100}%"></div></div></div>`;
+    const weeksLeft = Math.max(0.5, left / 7), need = GOAL_VDOT - p.v, perWeek = need / weeksLeft;
+    h += `<div class="card"><dl class="kv">
+      <dt>Distance</dt><dd>${esc(GOAL_DIST)}</dd>
+      <dt>Goal pace</dt><dd>${fmtP(GOAL_PACE)}</dd>
+      <dt>VDOT gap</dt><dd>${need > 0 ? `+${need.toFixed(1)} · ${perWeek.toFixed(2)}/week` : "none"}</dd>
+      ${p.basis ? `<dt>Prediction from</dt><dd>${esc(p.basis.label)} · ${esc(fdate(p.basis.run.date, { day: "numeric", month: "short" }))}</dd>` : ""}
+      ${p.ceiling ? `<dt>Short-effort ceiling</dt><dd>${fmtT(p.ceiling.s)}</dd>` : ""}
+      ${p.trend ? `<dt>Trend (${p.trend.n} wk)</dt><dd>${p.trend.slope >= 0 ? "+" : ""}${p.trend.slope.toFixed(2)}/wk → ${fmtT(p.trend.atRace)}</dd>` : ""}
+      ${vt ? `<dt>Garmin VO2max</dt><dd>${vt.latest.toFixed(1)}</dd>` : ""}
+      <dt>Training since</dt><dd>${esc(fdate(START, { day: "numeric", month: "short", year: "numeric" }))}</dd>
+    </dl></div>`;
+  }
+  const hist = (GOAL.history || []).slice().reverse();
+  if (hist.length) h += `<section class="card"><h3>Previous goals</h3><div class="tablewrap"><table><thead><tr><th>Goal</th><th class="r">Target</th><th class="r">Date</th></tr></thead><tbody>${hist.map((g) => `<tr><td style="white-space:normal">${esc(g.name)}</td><td class="r">${esc(distLabel(g.distanceM))} · ${fmtT(g.targetS)}</td><td class="r">${esc(fdate(g.date, { day: "numeric", month: "short", year: "2-digit" }))}</td></tr>`).join("")}</tbody></table></div></section>`;
+  return h;
+}
+function goalForm() {
+  const D = S.goalDraft, dv = (id, d) => (D[id] != null ? D[id] : d);
+  const known = DISTS.some(([m]) => Math.abs(m - GOAL_M) < 1);
+  const dsel = dv("g-dist", known ? String(DISTS.find(([m]) => Math.abs(m - GOAL_M) < 1)[0]) : "custom");
+  return `<section class="card goalform"><h3>Edit goal</h3>
+    <label>Name<input id="g-name" type="text" maxlength="60" value="${esc(dv("g-name", GOAL.name))}"></label>
+    <div class="grid2">
+      <label>Distance<select id="g-dist">${DISTS.map(([m, l]) => `<option value="${m}"${String(m) === dsel ? " selected" : ""}>${l}</option>`).join("")}<option value="custom"${dsel === "custom" ? " selected" : ""}>Other (km)</option></select></label>
+      ${dsel === "custom" ? `<label>Distance (km)<input id="g-km" type="number" min="1" max="100" step="0.1" value="${esc(dv("g-km", known ? "" : +(GOAL_M / 1000).toFixed(2)))}"></label>` : ""}
+      <label>Target time<input id="g-time" type="text" inputmode="numeric" value="${esc(dv("g-time", hms(GOAL_S)))}" placeholder="mm:ss or h:mm:ss"></label>
+      <label>Race date<input id="g-date" type="date" value="${esc(dv("g-date", RACE))}"></label>
+      <label>Training start<input id="g-start" type="date" value="${esc(dv("g-start", START))}"></label>
+    </div>
+    ${S.goalErr ? `<p class="small" style="color:var(--bad)">${esc(S.goalErr)}</p>` : ""}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="save-goal">Save goal</button></div>
+    <p class="small muted">Weekly plans follow this goal from the next plan you ask for.</p></section>`;
+}
+async function saveGoal() {
+  const v = (id) => document.getElementById(id)?.value ?? "";
+  const name = v("g-name").trim() || "Goal";
+  const ds = v("g-dist");
+  const distanceM = ds === "custom" ? Number(v("g-km")) * 1000 : Number(ds);
+  const targetS = parseHms(v("g-time"));
+  const date = v("g-date"), startDate = v("g-start");
+  if (!(distanceM >= 1000)) { S.goalErr = "Set a distance of 1 km or more."; render(); return; }
+  if (!targetS) { S.goalErr = "Write the target time as mm:ss or h:mm:ss."; render(); return; }
+  if (!/^\d{4}-\d\d-\d\d$/.test(date) || !/^\d{4}-\d\d-\d\d$/.test(startDate) || startDate >= date) { S.goalErr = "Race date must be after the training start."; render(); return; }
+  const changed = GOAL.distanceM !== distanceM || GOAL.targetS !== targetS || GOAL.date !== date || GOAL.name !== name || GOAL.startDate !== startDate;
+  if (!changed) { S.goalEdit = false; S.goalErr = null; render(); return; }
+  const prev = { name: GOAL.name, distanceM: GOAL.distanceM, targetS: GOAL.targetS, date: GOAL.date, startDate: GOAL.startDate, until: today() };
+  const next = { name, distanceM, targetS, date, startDate, updatedAt: Date.now(), history: [...(GOAL.history || []), prev].slice(-20) };
+  applyGoal(next); applyLogs(); S.goalEdit = false; S.goalErr = null; S.goalDraft = {}; render();
+  if (db) { try { await db.collection("coach").doc("goal").set(next); } catch (e) { S.storeErr = "Couldn’t save the goal (" + (e?.code || "error") + ")."; render(); } }
 }
 
 /* ---------- Drawer: one day / one run ---------- */
@@ -1262,7 +1334,7 @@ function renderDrawer() {
       ${s.details ? `<p>${esc(s.details)}</p>` : ""}${profile(s, true, runs[0])}${targets(s)}
       ${s.tips?.length ? `<div><div class="eyebrow">Tips</div><ul class="tips">${s.tips.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</section>`;
   } else if (d === RACE) {
-    h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The race-week plan appears once you ask Claude for it on Monday 7 December.</p></section>`;
+    h += `<section class="card"><p>Race day: ${esc(GOAL_DIST)} in ${fmtT(GOAL_S)}, about ${fmtP(GOAL_PACE)}.</p></section>`;
   }
   for (const r of runs) h += runDetail(r, s);
   if (!runs.length && s && s.type !== "rest" && d < today()) h += `<div class="banner bad"><span class="dot"></span><div>No run recorded on Garmin for this day.</div></div>`;
@@ -1317,13 +1389,15 @@ function renderHeader() {
 let lastView = null;
 function render() {
   const fid = document.activeElement?.dataset?.log, sel = fid ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+  const gid = /^g-/.test(document.activeElement?.id || "") ? document.activeElement.id : null;
   renderHeader();
   const view = $("#view");
   if (S.stravaLoading && !S.allRuns.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Garmin…</p></div>`;
-  else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : S.view === "records" ? renderRecords() : renderStats();
+  else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : S.view === "records" ? renderRecords() : S.view === "goal" ? renderGoal() : renderStats();
   if (lastView !== S.view) { window.scrollTo(0, 0); lastView = S.view; }
   const scrim = $("#scrim");
   if (S.drawer) { $("#drawer").innerHTML = renderDrawer(); scrim.hidden = false; } else scrim.hidden = true;
+  if (gid) document.getElementById(gid)?.focus();
   if (fid) { const el = (S.drawer ? $("#drawer") : $("#view")).querySelector(`[data-log="${CSS.escape(fid)}"]`) || document.querySelector(`[data-log="${CSS.escape(fid)}"]`); if (el) { el.focus(); if (sel) el.setSelectionRange(sel[0], sel[1]); } }
 }
 
@@ -1342,11 +1416,14 @@ document.addEventListener("click", (e) => {
   if (a === "close") { S.drawer = null; render(); }
   else if (a === "stop") { S.busy?.ctl?.abort(); }
   else if (a === "dismiss-sample") { S.sampleErr = null; render(); }
+  else if (a === "edit-goal") { S.goalEdit = !S.goalEdit; S.goalErr = null; S.goalDraft = {}; render(); }
+  else if (a === "save-goal") { saveGoal(); }
   else if (a === "reload-strava") { if (mcp) loadGarmin(true); }
   else if (a === "log") { const r = S.allRuns.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; logRun(r); } }
   else if (a === "analyse") { const r = S.allRuns.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; analyse(r); } }
 });
-document.addEventListener("input", (e) => { const id = e.target?.dataset?.log; if (id) S.logDrafts[id] = e.target.value; });
+document.addEventListener("input", (e) => { const id = e.target?.dataset?.log; if (id) S.logDrafts[id] = e.target.value; if (/^g-/.test(e.target?.id || "")) S.goalDraft[e.target.id] = e.target.value; });
+document.addEventListener("change", (e) => { if (/^g-/.test(e.target?.id || "")) { S.goalDraft[e.target.id] = e.target.value; if (e.target.id === "g-dist") render(); } });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && S.drawer) { S.drawer = null; render(); }
 });
@@ -1354,16 +1431,16 @@ document.addEventListener("pointerover", (e) => {
   const g = e.target.closest("[data-tip]"); if (!g) return;
   const tip = g.closest(".chart")?.querySelector(".tip"); if (tip) tip.textContent = g.dataset.tip;
 });
-window.addEventListener("hashchange", () => { let v = location.hash.slice(1); if (v === "progress") v = "stats"; if (["week", "calendar", "stats", "records"].includes(v)) { S.view = v; render(); } });
+window.addEventListener("hashchange", () => { let v = location.hash.slice(1); if (v === "progress") v = "stats"; if (["goal", "week", "calendar", "stats", "records"].includes(v)) { S.view = v; render(); } });
 
 /* ================= Boot ================= */
 render();
 (async () => {
-  if (!window.claude?.use) { S.stravaLoading = false; S.stravaErr = "Open Sub 20 Challenge inside claude.ai to load your Garmin runs."; S.store = "local"; lsLoad(); render(); return; }
+  if (!window.claude?.use) { S.stravaLoading = false; S.stravaErr = "Open Running Coach inside claude.ai to load your Garmin runs."; S.store = "local"; lsLoad(); render(); return; }
   initStore();
   claude.use("sample").then((s) => { S.sample = s; render(); });
   mcp = await claude.use("mcp");
-  if (!mcp) { S.stravaLoading = false; S.stravaErr = "Connectors aren’t available in this view. Open Sub 20 Challenge in claude.ai."; render(); return; }
+  if (!mcp) { S.stravaLoading = false; S.stravaErr = "Connectors aren’t available in this view. Open Running Coach in claude.ai."; render(); return; }
   loadGarmin(false);
 })();
 </script>

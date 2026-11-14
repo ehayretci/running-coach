@@ -54,3 +54,10 @@ Edit `artifact/sub20-challenge.html`. Keep the database collections (weeks, logs
 - 14 Nov: Step 4 done. Garmin pipeline in page (loadGarmin/mapRun/mapPerf/bestOver/loadFitness/garminMsg). Best efforts computed from laps. Route map removed (no polyline in Garmin). Form row (stride/GCT/VO/NP) in run detail. Not yet published.
 - 14 Nov: Step 6 done. Stats tab (4 sections) + Records tab built; #progress redirects to #stats. Step 7 testing: Garmin-shaped mock (real list + real 12 Nov splits + backup db) — no errors, 0 pending (logs match Garmin IDs), no overflow at 390/1000 light/dark.
 - 14 Nov: Published v18 to the same URL (mcp Garmin 6 tools, sample, db). Step 8 verified: weeks 2026-11-02 (v6) and 2026-11-09 (v3) identical to backup; 16 logs and 14 analyses present (Strava + Garmin IDs). UPGRADE COMPLETE.
+
+## Phase 2 (14 Nov, evening)
+Requests: (a) route map + per-second data from the raw FIT file; (b) new first tab "Goal" (editable goal: name, distance, target time, date; planner reads it); (c) rename project to "Running coach" (sub-20 is the current goal); (d) Sun 15 Nov shoe → Cloudmonster.
+- (d) DONE: weeks/2026-11-09 v3→v4, Sunday shoe cloudmonster (plans/ copy updated).
+- Plan: goal in db `coach/goal` {name, distanceM, targetS, date, startDate, history[]}; page constants GOAL_S/RACE/START become `let`, set from it. Goal tab = prediction hero + countdown + edit form. Stats loses the hero.
+- Streams: `get_activity_fit_messages` {message_types:["record"], include_records:true, message_limit:5000} lazily on opening a run; lat/long semicircles ×180/2^31. Weather: `get_activity_weather`.
+- Goal tab + rename coded (applyGoal, renderGoal, goalForm, saveGoal → coach/goal). Not yet published.
