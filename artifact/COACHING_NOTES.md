@@ -1,4 +1,6 @@
-# Sub 20 Challenge: coaching notes
+# Running Coach: coaching notes
+
+**Goal:** read db `coach/goal` (set by Erim on the Goal tab: name, distance, target time, race date, training start) before every weekly plan, and plan towards it. Current goal: Sub 20 5K, 19:59 on 10 Dec 2026.
 
 These rules come from Erim's first two weeks of training (2–13 Nov 2026). They are read before every weekly plan, and the app also sends them to the coach.
 
@@ -27,4 +29,4 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 - Only strides and walks are written in seconds. Reps, tempo blocks and jogs are written in distance.
 - Planned km include warm-up, strides, recoveries and cool-down.
 - Keep text short: no "why" explanations, 1–3 tips per run, and shoe names only.
-- Run analysis covers only that run. The goal outlook belongs on the Stats page.
+- Run analysis covers only that run. The goal outlook belongs on the Goal page.

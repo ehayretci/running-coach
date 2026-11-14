@@ -61,3 +61,4 @@ Requests: (a) route map + per-second data from the raw FIT file; (b) new first t
 - Plan: goal in db `coach/goal` {name, distanceM, targetS, date, startDate, history[]}; page constants GOAL_S/RACE/START become `let`, set from it. Goal tab = prediction hero + countdown + edit form. Stats loses the hero.
 - Streams: `get_activity_fit_messages` {message_types:["record"], include_records:true, message_limit:5000} lazily on opening a run; lat/long semicircles ×180/2^31. Weather: `get_activity_weather`.
 - Goal tab + rename coded (applyGoal, renderGoal, goalForm, saveGoal → coach/goal). Not yet published.
+- Streams coded: fetchStream/summariseStream/loadStream(s), db streams/<id>, routeMap, paceHrChart, HR drift, weather. Mock-tested (no errors). Publishing v19 with manifest + get_activity_fit_messages, get_activity_weather.

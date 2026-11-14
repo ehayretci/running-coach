@@ -376,7 +376,7 @@ const S = {
   store: null, storeErr: null,
   sample: null, sampleErr: null,
   busy: null, // {kind, ctl}
-  goalEdit: false, goalErr: null, goalDraft: {}, goalReady: false,
+  goalEdit: false, goalErr: null, goalDraft: {}, goalReady: false, streams: {}, streamsReady: false, streamErr: null, weather: {},
   drawer: null, // {date} or {runId}
 };
 let mcp = null, db = null;
@@ -401,7 +401,7 @@ async function saveAnalysis(id) {
 }
 async function initStore() {
   db = await claude.use("db");
-  if (!db) { S.store = "local"; lsLoad(); render(); return; }
+  if (!db) { S.store = "local"; S.streamsReady = true; lsLoad(); render(); return; }
   let got = 0;
   const timer = setTimeout(() => { if (got < 2) { S.storeErr = "Your saved plans can’t be reached yet."; render(); } }, 10000);
   const onErr = (e) => { clearTimeout(timer); S.storeErr = "Saved plans aren’t available in this view (" + e.code + ")."; render(); };
@@ -422,6 +422,11 @@ async function initStore() {
     const l = {};
     for (const doc of snap.docs) { const b = doc.data(); if (b) l[doc.id] = b; }
     S.logs = l; if (!snap.metadata.fromCache) S.logsReady = true; applyLogs(); render();
+  }, onErr);
+  db.collection("streams").onSnapshot((snap) => {
+    for (const doc of snap.docs) { const b = doc.data(); if (b && b.v) { S.streams[doc.id] = b; mergeStream(doc.id); } }
+    if (!snap.metadata.fromCache && !S.streamsReady) { S.streamsReady = true; if (S.perfDone) loadStreams(); }
+    render();
   }, onErr);
   db.collection("analyses").onSnapshot((snap) => {
     const a = {};
@@ -501,6 +506,7 @@ async function loadGarmin(refresh = false) {
     S.stravaLoading = false; render();
     loadFitness();
     await loadPerfs();
+    S.perfDone = true; if (S.streamsReady) loadStreams();
   } catch (e) {
     S.stravaLoading = false;
     S.stravaErr = garminMsg(e);
@@ -549,7 +555,7 @@ async function loadPerfs() {
           GC("get_activity_splits", { activity_id: Number(r.id) }).catch(() => null),
           GC("get_activity_hr_in_timezones", { activity_id: Number(r.id) }).catch(() => null),
         ]);
-        S.perf[r.id] = mapPerf(d || {}, sp, z);
+        S.perf[r.id] = mapPerf(d || {}, sp, z); mergeStream(r.id);
         if (S.perf[r.id].cadence) r.cadence = S.perf[r.id].cadence;
         const mv = num(d?.moving_duration_seconds);
         if (mv && r.km) { r.moving = mv; r.pace = mv / r.km; }
@@ -574,6 +580,142 @@ function garminMsg(e) {
     default: return "Couldn’t load Garmin (" + (e?.code || "unknown") + ").";
   }
 }
+
+/* ================= Per-second data from the watch file (route, exact best efforts, drift) ================= */
+const SEMI = 180 / 2 ** 31;
+const fv = (m, n) => { const f = m.fields?.find((x) => x.name === n); return f ? f.value : undefined; };
+/** Exact fastest time over `dist` metres from per-second distance/time (linear interpolation). */
+function bestFromStream(ts, ds, dist) {
+  let best, j = 0;
+  for (let i = 0; i < ds.length; i++) {
+    while (j < ds.length && ds[j] - ds[i] < dist) j++;
+    if (j >= ds.length) break;
+    const over = ds[j] - ds[i] - dist, seg = ds[j] - ds[j - 1];
+    const t = ts[j] - ts[i] - (seg > 0 ? (over / seg) * (ts[j] - ts[j - 1]) : 0);
+    if (t > 0 && (best == null || t < best)) best = t;
+  }
+  return best;
+}
+function summariseStream(recs) {
+  const R = recs.map((m) => ({
+    t: Date.parse(fv(m, "timestamp") + "Z") / 1000, lat: fv(m, "position_lat"), lon: fv(m, "position_long"), d: fv(m, "distance"),
+    v: fv(m, "enhanced_speed") ?? fv(m, "speed"), hr: fv(m, "heart_rate"), w: fv(m, "power"),
+  })).filter((x) => isFinite(x.t) && typeof x.d === "number");
+  if (R.length < 10) return null;
+  const t0 = R[0].t, ts = R.map((x) => x.t - t0), ds = R.map((x) => x.d);
+  // route: keep ~400 points
+  const gps = R.filter((x) => typeof x.lat === "number" && typeof x.lon === "number");
+  const step = Math.max(1, Math.ceil(gps.length / 400));
+  const route = gps.filter((_, i) => i % step === 0 || i === gps.length - 1).map((x) => [+(x.lat * SEMI).toFixed(5), +(x.lon * SEMI).toFixed(5)]);
+  const best = {};
+  for (const [k, m] of Object.entries({ Fastest400: 400, Fastest1k: 1000, FastestMile: 1609.34, Fastest2Mile: 3218.69, Fastest5k: 5000, Fastest10k: 10000 })) { const b = bestFromStream(ts, ds, m); if (b) best[k] = +b.toFixed(1); }
+  // series every ~100 m: [km, pace s/km (30 s smoothed), hr]
+  const series = []; let next = 0;
+  for (let i = 0; i < R.length; i++) {
+    if (R[i].d < next) continue;
+    let k = i; while (k > 0 && ts[i] - ts[k] < 30) k--;
+    const dd = R[i].d - R[k].d, dt = ts[i] - ts[k];
+    series.push([+(R[i].d / 1000).toFixed(2), dd > 5 ? Math.round(dt / (dd / 1000)) : null, R[i].hr ?? null]);
+    next = R[i].d + 100;
+  }
+  // HR drift (aerobic decoupling): speed/HR, first vs second half of moving time, runs ≥ 20 min
+  let drift = null;
+  const mv = R.filter((x) => x.v > 1.8 && x.hr > 60);
+  if (mv.length > 1200) {
+    const h = Math.floor(mv.length / 2), ef = (a) => a.reduce((s, x) => s + x.v, 0) / a.reduce((s, x) => s + x.hr, 0);
+    const e1 = ef(mv.slice(0, h)), e2 = ef(mv.slice(h));
+    drift = +(((e1 - e2) / e1) * 100).toFixed(1);
+  }
+  return { v: 1, route, best, series, drift, n: R.length };
+}
+async function fetchStream(id) {
+  let recs = [], off = 0;
+  for (let n = 0; n < 4; n++) {
+    const res = await mcp.callTool(GARMIN, "get_activity_fit_messages", { activity_id: Number(id), message_types: ["record"], include_records: true, message_offset: off, message_limit: 5000 }, { cache: { staleTime: 6048e5, gcTime: 864e5 } });
+    const pl = res.payload || {};
+    recs = recs.concat(pl.messages || []);
+    const nx = pl.pagination?.next_offset; if (nx == null) break; off = nx;
+  }
+  return summariseStream(recs);
+}
+/** Stream summaries are stored in db `streams/<id>` so each watch file is read once. */
+function mergeStream(id) {
+  const st = S.streams[id], p = S.perf[id];
+  if (st?.best && p) p.best = { ...p.best, ...st.best };
+}
+const streamBusy = new Set();
+async function loadStream(r) {
+  if (!mcp || S.streams[r.id] || streamBusy.has(r.id)) return;
+  streamBusy.add(r.id);
+  try {
+    const st = await fetchStream(r.id);
+    if (st) {
+      S.streams[r.id] = st; mergeStream(r.id); render();
+      if (db) db.collection("streams").doc(r.id).set(st).catch((e) => console.warn("stream save", e));
+    } else S.streams[r.id] = { v: 1, none: true };
+  } catch (e) { console.warn("stream", r.id, e); S.streamErr = S.streamErr || {}; S.streamErr[r.id] = true; render(); }
+  finally { streamBusy.delete(r.id); }
+}
+/** Background: read watch files for runs since CONTEXT_FROM that have none stored yet (once per run). */
+async function loadStreams() {
+  if (!S.streamsReady) return;
+  for (const r of S.allRuns.slice().reverse()) { if (!S.streams[r.id] && !S.streamErr?.[r.id]) await loadStream(r); }
+}
+async function loadWeather(r) {
+  if (!mcp || S.weather[r.id] !== undefined) return;
+  S.weather[r.id] = null;
+  try { const w = await GC("get_activity_weather", { activity_id: Number(r.id) }); if (w && num(w.temperature) != null) { S.weather[r.id] = w; render(); } } catch { /* optional */ }
+}
+function routeMap(r) {
+  const pts = S.streams[r.id]?.route;
+  if (!pts || pts.length < 2) return streamBusy.has(r.id) ? `<section class="card routemap"><div class="eyebrow">Route</div><p class="small muted">Reading the watch file…</p></section>` : "";
+  const lat0 = pts.reduce((a, p) => a + p[0], 0) / pts.length, kx = Math.cos((lat0 * Math.PI) / 180);
+  const xy = pts.map(([la, ln]) => [ln * kx, -la]);
+  const xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = 360, H = 220, pad = 16;
+  const sc = Math.min((W - 2 * pad) / Math.max(maxX - minX, 1e-6), (H - 2 * pad) / Math.max(maxY - minY, 1e-6));
+  const ox = (W - (maxX - minX) * sc) / 2, oy = (H - (maxY - minY) * sc) / 2;
+  const P = xy.map(([x, y]) => [ox + (x - minX) * sc, oy + (y - minY) * sc]);
+  const d = P.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const mPerUnit = 111320 / sc, bar = [100, 200, 500, 1000, 2000].find((m) => m / mPerUnit > 50) || 2000;
+  const [sx, sy] = P[0], [fx, fy] = P[P.length - 1];
+  return `<section class="card routemap"><div class="prof-head"><span class="eyebrow">Route</span><a class="small" href="https://connect.garmin.com/modern/activity/${esc(r.id)}" target="_blank" rel="noopener">Open in Garmin Connect ↗</a></div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Route of this run">
+      <rect x="0" y="0" width="${W}" height="${H}" rx="10" fill="var(--surface-2)"/>
+      <path d="${d}" fill="none" stroke="var(--surface)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${fx.toFixed(1)}" cy="${fy.toFixed(1)}" r="6" fill="var(--bad)" stroke="var(--surface)" stroke-width="2"/>
+      <circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6" fill="var(--good)" stroke="var(--surface)" stroke-width="2"/>
+      <line x1="${W - pad - bar / mPerUnit}" x2="${W - pad}" y1="${H - 12}" y2="${H - 12}" stroke="var(--fg-2)" stroke-width="2"/>
+      <text class="ax" x="${W - pad}" y="${H - 17}" text-anchor="end">${bar >= 1000 ? bar / 1000 + " km" : bar + " m"}</text>
+    </svg>
+    <div class="legend small"><span><i class="sw" style="background:var(--good);border-radius:50%"></i>Start</span><span><i class="sw" style="background:var(--bad);border-radius:50%"></i>Finish</span><span class="muted">North is up</span></div></section>`;
+}
+/** Pace (line) and HR (dashed) over distance. */
+function paceHrChart(r) {
+  const st = S.streams[r.id];
+  const s = st?.series?.filter((x) => x[1] && x[1] < 900);
+  if (!s || s.length < 5) return "";
+  const W = 360, H = 170, L = 36, R = 34, T = 12, B = 22;
+  const km1 = s[s.length - 1][0] || 1;
+  const pl = Math.min(...s.map((x) => x[1])), ph = Math.min(Math.max(...s.map((x) => x[1])), pl + 240);
+  const hrs = s.map((x) => x[2]).filter((x) => x), hl = Math.min(...hrs, 120), hh = Math.max(...hrs, 180);
+  const X = (k) => L + (k / km1) * (W - L - R);
+  const Yp = (v) => T + ((Math.min(v, ph) - pl) / Math.max(1, ph - pl)) * (H - T - B); // faster = higher
+  const Yh = (v) => H - B - ((v - hl) / Math.max(1, hh - hl)) * (H - T - B);
+  let g = [pl, (pl + ph) / 2, ph].map((v) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${Yp(v)}" y2="${Yp(v)}"/><text class="ax" x="${L - 4}" y="${Yp(v) + 3}" text-anchor="end">${fmtT(v)}</text>`).join("");
+  g += [hl, hh].map((v) => `<text class="ax" x="${W - R + 4}" y="${Yh(v) + 3}">${Math.round(v)}</text>`).join("");
+  g += `<path class="line" d="${s.map((x, i) => `${i ? "L" : "M"}${X(x[0]).toFixed(1)},${Yp(x[1]).toFixed(1)}`).join(" ")}"/>`;
+  const hs = s.filter((x) => x[2]);
+  if (hs.length > 3) g += `<path d="${hs.map((x, i) => `${i ? "L" : "M"}${X(x[0]).toFixed(1)},${Yh(x[2]).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--bad)" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  for (let k = 0; k <= km1; k += km1 > 12 ? 5 : km1 > 5 ? 2 : 1) g += `<text class="ax" x="${X(k)}" y="${H - 6}" text-anchor="middle">${k}</text>`;
+  g += s.filter((_, i) => i % 3 === 0).map((x) => `<g data-tip="${x[0].toFixed(1)} km · ${fmtP(x[1])}${x[2] ? " · " + x[2] + " bpm" : ""}"><rect x="${(X(x[0]) - 4).toFixed(1)}" y="${T}" width="8" height="${H - T - B}" fill="transparent"/></g>`).join("");
+  return `<section class="card"><div class="prof-head"><span class="eyebrow">Pace & heart rate</span>${st.drift != null ? `<span class="small">HR drift <strong${Math.abs(st.drift) > 5 ? ' style="color:var(--warn)"' : ""}>${st.drift > 0 ? "+" : ""}${st.drift}%</strong></span>` : ""}</div>
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pace and heart rate over distance">${g}</svg><div class="tip" aria-live="polite"></div></div>
+    <div class="legend small"><span><i class="sw" style="background:var(--accent)"></i>Pace</span><span><i class="sw" style="border-bottom:2px dashed var(--bad);border-radius:0;height:6px"></i>HR</span><span class="muted">km</span></div></section>`;
+}
+const weatherText = (w) => w ? [w.weather_description, `${Math.round(w.temperature)}°C`, w.wind_speed != null ? `${Math.round(w.wind_speed)} km/h ${String(w.wind_direction_compass || "").toUpperCase()}`.trim() : null, w.humidity_percent != null ? `${w.humidity_percent}% humidity` : null].filter(Boolean).join(" · ") : "";
 
 /* ================= Analytics ================= */
 /** A challenge run counts only once you've logged it. Runs before the challenge count automatically. */
@@ -784,7 +926,7 @@ async function analyse(run) {
   const runCtx = context(monday(run.date), run.date).split("\n").filter((l) => !/^(GOAL|BASELINE|CURRENT FITNESS|Short-effort|Trend|GARMIN VO2MAX)/.test(l)).join("\n");
   const lg = S.logs[run.id];
   const note = lg && (lg.comment || lg.effort) ? `\nATHLETE'S OWN NOTES ON THIS RUN (take them into account — they explain why it went the way it did; say so where they change your read): ${lg.effort ? `effort felt ${lg.effort}/10. ` : ""}${lg.comment ? `"${lg.comment}"` : ""}` : "";
-  const prompt = `${COACH()}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off the goal is, or whether the goal is realistic — that lives on the Stats page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for the goal. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
+  const prompt = `${COACH()}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off the goal is, or whether the goal is realistic — that lives on the Goal page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for the goal. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
   const ctl = new AbortController();
   S.busy = { kind: "analyse", ctl, runId: run.id }; render();
   try {
@@ -1341,6 +1483,8 @@ function renderDrawer() {
   return h;
 }
 function runDetail(r, s) {
+  if (mcp && !S.streams[r.id] && !streamBusy.has(r.id)) queueMicrotask(() => loadStream(r));
+  if (mcp && S.weather[r.id] === undefined) queueMicrotask(() => loadWeather(r));
   const pf = S.perf[r.id];
   const wp = workPace(r, s);
   const a = S.analyses[r.id];
@@ -1361,10 +1505,12 @@ function runDetail(r, s) {
     h += `<p class="small">Target ${fmtT(s.paceMin)}–${fmtT(s.paceMax)}/km · ${wp ? "work reps" : "whole run"} ${fmtP(got)}${dev != null ? ` (${dev > 0 ? "+" : ""}${dev.toFixed(1)}%)` : ""}</p>`;
   }
   h += formRow(pf);
+  h += routeMap(r);
+  h += paceHrChart(r);
   const rows = s ? sectionRows(r, s) : null;
   if (rows) h += `<section class="card"><h3>Sections</h3>${sectionTable(rows)}</section>`;
   const sh = shoeOf(r);
-  h += `<p class="small muted">${sh ? `Shoe: ${esc(SHOES[sh].name)}` : ""}${sh && pf?.teLabel ? " · " : ""}${pf?.teLabel ? "Garmin: " + esc(teName(pf.teLabel)) : ""}</p>`;
+  h += `<p class="small muted">${[sh ? `Shoe: ${esc(SHOES[sh].name)}` : null, pf?.teLabel ? "Garmin: " + esc(teName(pf.teLabel)) : null, S.weather[r.id] ? esc(weatherText(S.weather[r.id])) : null].filter(Boolean).join(" · ")}</p>`;
   if (!isLogged(r)) { if (S.logsReady) h += pendingCard(r); return h; }
   const lg = S.logs[r.id];
   if (lg && (lg.comment || lg.effort)) h += `<section class="card"><div class="eyebrow">Your notes</div>${lg.effort ? `<p class="small">Effort <strong>${esc(lg.effort)}/10</strong></p>` : ""}${lg.comment ? `<p>${esc(lg.comment)}</p>` : ""}</section>`;
