@@ -62,3 +62,4 @@ Requests: (a) route map + per-second data from the raw FIT file; (b) new first t
 - Streams: `get_activity_fit_messages` {message_types:["record"], include_records:true, message_limit:5000} lazily on opening a run; lat/long semicircles ×180/2^31. Weather: `get_activity_weather`.
 - Goal tab + rename coded (applyGoal, renderGoal, goalForm, saveGoal → coach/goal). Not yet published.
 - Streams coded: fetchStream/summariseStream/loadStream(s), db streams/<id>, routeMap, paceHrChart, HR drift, weather. Mock-tested (no errors). Publishing v19 with manifest + get_activity_fit_messages, get_activity_weather.
+- Published v19 (Garmin 8 tools). coach/goal created (v1, Sub 20 5K). Phase 2 complete; live check of watch-file size pending Erim opening the page.

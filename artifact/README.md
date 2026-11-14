@@ -1,6 +1,6 @@
-# Sub 20 Challenge: claude.ai artifact
+# Running Coach: claude.ai artifact
 
-Sub 20 Challenge runs as a claude.ai artifact: https://claude.ai/artifact/Xop3BfXWRpjjTonRwffbZ7
+Running Coach runs as a claude.ai artifact: https://claude.ai/artifact/Xop3BfXWRpjjTonRwffbZ7
 
 `sub20-challenge.html` is the page source. Publishing it gives the page three runtime capabilities:
 
