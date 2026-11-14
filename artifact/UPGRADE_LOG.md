@@ -5,7 +5,11 @@ The goal is to replace Strava with the Garmin connector (Venu 3S), add a running
 ## Status (update after each step)
 - [x] 1. **Backup** (14 Nov): every database document copied to `artifact/backup-2026-11-14/`. That covers weeks 2026-11-02 and 2026-11-09, 8 logs, 7 analyses and coach/insights. Restore with ArtifactData `set` from these files if anything breaks.
 - [x] 2. Explored the Garmin connector (display name **"Garmin"**, connected).
-- [ ] 3. Questions for Erim: which stats he wants and whether Strava stays as a fallback.
+- [x] 3. Erim's decisions (14 Nov):
+  - **Garmin only.** Drop Strava from the app. Map old logs and analyses by start time.
+  - **Stats tab** (replaces Progress), data-focused: (a) fitness and prediction (Garmin VO2max trend, lactate threshold, predicted 5K vs 19:59, VDOT); (b) training load (weekly km, time in HR zones per week, hard/easy balance, training effect); (c) form and efficiency (cadence, stride length, power per pace, HR at a given pace, running dynamics if available); (d) recovery readiness, running-relevant only (HRV, resting HR, sleep score, recovery time) as a "ready for a hard session?" check. No stress, hydration or steps.
+  - **New Records tab** for PRs and best efforts. Stats shows data, not results.
+  - Tabs become: Week · Calendar · Stats · Records.
 - [ ] 4. Data pipeline in the page (Garmin → normalised runs + running metrics).
 - [ ] 5. Migrate logs and analyses keyed by Strava IDs (keep the originals; add a mapping).
 - [ ] 6. Build the Stats page.
