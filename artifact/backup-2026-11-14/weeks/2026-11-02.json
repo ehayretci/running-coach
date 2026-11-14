@@ -1,0 +1,248 @@
+{
+  "generatedAt": 1793749238412,
+  "notes": "Sunday: 6-a-side football, expect ~6 km of rapid intervals. Monday was the all-out baseline 5K. Happy to run the rest as needed. Aiming for sub-20 by 10 Dec. Thu/Fri swapped: big meal Thursday evening, so easy run Thursday and intervals Friday.",
+  "sessions": [
+    {
+      "date": "2026-11-02",
+      "details": "All-out 5K to set the baseline.",
+      "distanceKm": 5,
+      "hrMax": 0,
+      "hrMin": 0,
+      "id": "w1-mon",
+      "paceMax": 0,
+      "paceMin": 0,
+      "powerMax": 0,
+      "powerMin": 0,
+      "segments": [],
+      "shoe": "cloudmonster",
+      "tips": [],
+      "title": "Baseline 5K",
+      "type": "timetrial",
+      "why": ""
+    },
+    {
+      "date": "2026-11-03",
+      "details": "Full rest after Monday's 5K.",
+      "distanceKm": 0,
+      "hrMax": 0,
+      "hrMin": 0,
+      "id": "w1-tue",
+      "paceMax": 0,
+      "paceMin": 0,
+      "powerMax": 0,
+      "powerMin": 0,
+      "segments": [],
+      "shoe": "none",
+      "tips": [
+        "10 min of mobility: calves, hips, hamstrings."
+      ],
+      "title": "Rest",
+      "type": "rest",
+      "why": ""
+    },
+    {
+      "date": "2026-11-04",
+      "details": "6 km easy, then 6 × 20 s strides with 60 s walk-back.",
+      "distanceKm": 7,
+      "hrMax": 150,
+      "hrMin": 125,
+      "id": "w1-wed",
+      "paceMax": 350,
+      "paceMin": 325,
+      "powerMax": 300,
+      "powerMin": 275,
+      "segments": [
+        {
+          "km": 6,
+          "label": "Easy",
+          "pace": [
+            325,
+            350
+          ]
+        },
+        {
+          "dropLastRest": true,
+          "kind": "strides",
+          "label": "Stride",
+          "reps": 6,
+          "rest": {
+            "label": "Walk back",
+            "pace": [
+              720,
+              720
+            ],
+            "sec": 60
+          },
+          "work": {
+            "pace": [
+              205,
+              220
+            ],
+            "sec": 20
+          }
+        }
+      ],
+      "shoe": "vomero",
+      "tips": [
+        "If power goes above 300 W, slow down.",
+        "Strides: fast but relaxed, not a sprint."
+      ],
+      "title": "Easy run + strides",
+      "type": "easy",
+      "why": ""
+    },
+    {
+      "date": "2026-11-05",
+      "details": "5 km easy.",
+      "distanceKm": 5,
+      "hrMax": 150,
+      "hrMin": 125,
+      "id": "w1-fri",
+      "paceMax": 355,
+      "paceMin": 330,
+      "powerMax": 295,
+      "powerMin": 270,
+      "segments": [
+        {
+          "km": 5,
+          "label": "Easy",
+          "pace": [
+            330,
+            355
+          ]
+        }
+      ],
+      "shoe": "vomero",
+      "tips": [
+        "Leave 2–3 h after a big meal, or keep the first 10 min very gentle.",
+        "Keep HR under 155 — slow down if it climbs."
+      ],
+      "title": "Easy aerobic run",
+      "type": "easy",
+      "why": ""
+    },
+    {
+      "date": "2026-11-06",
+      "details": "2 km warm-up + 4 × 20 s strides · 6 × 800 m @ 4:06–4:10/km (3:17–3:20 per rep), 2 min easy jog between · 1.5 km cool-down.",
+      "distanceKm": 10.5,
+      "hrMax": 184,
+      "hrMin": 172,
+      "id": "w1-thu",
+      "paceMax": 250,
+      "paceMin": 246,
+      "powerMax": 395,
+      "powerMin": 385,
+      "segments": [
+        {
+          "km": 2,
+          "label": "Warm-up",
+          "pace": [
+            330,
+            360
+          ]
+        },
+        {
+          "kind": "strides",
+          "label": "Stride",
+          "reps": 4,
+          "rest": {
+            "label": "Walk back",
+            "pace": [
+              720,
+              720
+            ],
+            "sec": 60
+          },
+          "work": {
+            "pace": [
+              205,
+              220
+            ],
+            "sec": 20
+          }
+        },
+        {
+          "dropLastRest": true,
+          "kind": "reps",
+          "label": "800 m rep",
+          "reps": 6,
+          "rest": {
+            "label": "Easy jog",
+            "pace": [
+              380,
+              420
+            ],
+            "sec": 120
+          },
+          "work": {
+            "km": 0.8,
+            "pace": [
+              246,
+              250
+            ]
+          }
+        },
+        {
+          "km": 1.5,
+          "label": "Cool-down",
+          "pace": [
+            330,
+            370
+          ]
+        }
+      ],
+      "shoe": "cloudmonster",
+      "tips": [
+        "Track or flat loop. Lap every rep.",
+        "Keep every rep within 2 s of the others.",
+        "Can't hold 4:10 by rep 5? Stop at 5."
+      ],
+      "title": "Intervals: 6 × 800 m",
+      "type": "intervals",
+      "why": ""
+    },
+    {
+      "date": "2026-11-07",
+      "details": "Rest before football.",
+      "distanceKm": 0,
+      "hrMax": 0,
+      "hrMin": 0,
+      "id": "w1-sat",
+      "paceMax": 0,
+      "paceMin": 0,
+      "powerMax": 0,
+      "powerMin": 0,
+      "segments": [],
+      "shoe": "none",
+      "tips": [
+        "Hydrate and eat normal carbs."
+      ],
+      "title": "Rest",
+      "type": "rest",
+      "why": ""
+    },
+    {
+      "date": "2026-11-08",
+      "details": "Match play, ≈6 km of sprints. Counts as this week's second hard session — no extra running.",
+      "distanceKm": 6,
+      "hrMax": 190,
+      "hrMin": 170,
+      "id": "w1-sun",
+      "paceMax": 0,
+      "paceMin": 0,
+      "powerMax": 0,
+      "powerMin": 0,
+      "segments": [],
+      "shoe": "none",
+      "tips": [
+        "Warm up 10 min: jog, leg swings, short sprints.",
+        "Log it on Strava so next week accounts for it."
+      ],
+      "title": "6-a-side football (≈6 km of sprints)",
+      "type": "football",
+      "why": ""
+    }
+  ],
+  "summary": "Week 1 of 6. Monday's 22:04 sets your baseline at VDOT 44.4; sub-20 needs 49.9, so you need about +1 VDOT a week for five weeks. That's roughly double a typical rate, so every week has to count. This week absorbs Monday's all-out effort, then puts one sharp session on Thursday at 4:06–4:10/km, already between your interval pace (4:18) and goal pace (4:00). Sunday's football is your second hard day, so Saturday is fully off. Running goes up from ~14 km a week recently to ~25 km this week, the main risk. If calves or shins complain after Thursday, cut Friday to 3 km or skip it.",
+  "weekStart": "2026-11-02"
+}
