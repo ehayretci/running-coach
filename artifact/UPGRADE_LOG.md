@@ -50,3 +50,5 @@ Edit `artifact/sub20-challenge.html`. Keep the database collections (weeks, logs
 **Records:** Garmin PRs (1K, mile, 5K, 10K, HM, longest run) with dates; best efforts since 2 Nov from laps and VDOT; the 19:59 target vs the 5K PR of 20:57.
 
 **Test:** update the scratchpad mock (mock.js/h4.cjs) to the Garmin shapes above, check for no errors in light/dark at 390 and 1000 px, then publish to the same URL with the new capabilities. Afterwards, verify the logs show as logged (not pending) for Garmin IDs.
+
+- 14 Nov: Step 4 done. Garmin pipeline in page (loadGarmin/mapRun/mapPerf/bestOver/loadFitness/garminMsg). Best efforts computed from laps. Route map removed (no polyline in Garmin). Form row (stride/GCT/VO/NP) in run detail. Not yet published.

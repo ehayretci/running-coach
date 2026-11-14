@@ -276,7 +276,7 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 </header>
 
 <main class="wrap" id="view">
-  <div class="empty"><div class="spinner"></div><p>Loading your runs from Strava…</p></div>
+  <div class="empty"><div class="spinner"></div><p>Loading your runs from Garmin…</p></div>
 </main>
 
 <nav class="bottom" id="bottom" aria-label="Sections">
@@ -297,14 +297,14 @@ const RACE = "2026-12-10";
 const GOAL_S = 19 * 60 + 59;         // 19:59
 const GOAL_PACE = GOAL_S / 5;
 const CONTEXT_FROM = "2026-10-05";   // 4 weeks before for training-load context
-const STRAVA = "Strava";
+const GARMIN = "Garmin";
 const SHOES = {
   vomero: { name: "Nike Vomero Plus", glyph: "V", role: "Max-cushion daily trainer · ≈1 year old" },
   cloudmonster: { name: "On Cloudmonster 3 Hyper", glyph: "C", role: "Cushioned, responsive trainer · brand new" },
   vaporfly: { name: "Nike Vaporfly 4", glyph: "VF", role: "Carbon-plated racer · ≈1 year old" },
   none: { name: "Rest day", glyph: "–", role: "" },
 };
-/** km each pair had before it was added to Strava (Nov 2026): runs from 3 Nov 2025 – 2 Nov 2026,
+/** km each pair had before the challenge (Nov 2026): runs from 3 Nov 2025 – 2 Nov 2026,
  *  under 6 km = Vaporfly, 6 km+ = Vomero, × 1.2 for unlogged running. */
 const SHOE_START_KM = { vaporfly: 241, vomero: 352, cloudmonster: 0 };
 const TYPES = {
@@ -350,7 +350,7 @@ const GOAL_VDOT = vdot(5000, GOAL_S);
 /* ================= State ================= */
 const S = {
   view: location.hash === "#stats" ? "progress" : ["week", "calendar", "progress"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
-  runs: [], perf: {}, zones: null, stravaErr: null, stravaLoading: true,
+  runs: [], perf: {}, zones: null, vo2: null, prs: null, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {}, logs: {}, insights: "", logsReady: false, allRuns: [], logDrafts: {}, logEffort: {},
   store: null, storeErr: null,
   sample: null, sampleErr: null,
@@ -406,56 +406,100 @@ async function initStore() {
   }, onErr);
 }
 
-/* ================= Strava (through your connector) ================= */
-const RUN_TYPES = ["Run", "TrailRun", "VirtualRun"];
-const ACTIVITY_TYPES = [...RUN_TYPES, "Soccer"]; // football is tracked too, but never counted as running
+/* ================= Garmin (through your connector) ================= */
+const RUN_TYPES = ["Run"];
+const G_RUN = ["running", "treadmill_running", "trail_running", "track_running", "indoor_running", "virtual_run", "street_running"];
+const G_BALL = ["soccer", "football", "soccer_football"];
 const isRunning = (r) => RUN_TYPES.includes(r.sport);
 function mapRun(a) {
-  const s = a.summary || {};
-  const km = num(s.distance) ?? 0;
+  const km = (num(a.distance_meters) ?? 0) / 1000;
+  const moving = num(a.moving_duration_seconds) ?? num(a.duration_seconds) ?? 0;
+  const st = String(a.start_time || "").replace(" ", "T");
   return {
-    id: String(a.id), name: a.name || "Run", date: String(a.start_local || "").slice(0, 10), start: a.start_local,
-    km, moving: num(s.moving_time) ?? 0, elapsed: num(s.elapsed_time) ?? 0, pace: num(s.avg_pace) ?? (km ? (s.moving_time / km) : undefined),
-    elev: num(s.elevation_gain), cadence: num(s.avg_cadence) ? s.avg_cadence * 2 : undefined, kcal: num(s.total_calories),
-    effort: num(s.relative_effort), weather: a.weather || null, gear: a.gear_id || null, sport: a.sport_type,
-    polyline: typeof a.reduced_polyline === "string" ? a.reduced_polyline : typeof a.polyline === "string" ? a.polyline : null,
+    id: String(a.id), name: a.name || "Run", date: st.slice(0, 10), start: st,
+    km, moving, elapsed: num(a.duration_seconds) ?? moving, pace: km ? moving / km : undefined,
+    elev: num(a.elevation_gain_meters), kcal: num(a.calories), avgHr: num(a.avg_hr_bpm), maxHr: num(a.max_hr_bpm),
+    sport: G_BALL.includes(a.type) ? "Soccer" : "Run", gtype: a.type,
   };
 }
-function mapPerf(p) {
-  const best = {};
-  for (const b of p.best_efforts || []) if (b && num(b.value) && (b.unit === "seconds" || !b.unit)) best[b.type_value || b.name] = b.value;
-  const avgHr = num(p.average_heartrate) ?? num(p.avg_heartrate) ?? num(p.average_heart_rate);
-  const maxHr = num(p.max_heartrate) ?? num(p.max_heart_rate);
-  const laps = (p.laps || []).map((l) => ({
-    m: num(l.distance) ?? 0, t: num(l.moving_time) ?? num(l.elapsed_time) ?? 0, speed: num(l.avg_speed),
-    watts: num(l.avg_watts), cad: num(l.avg_cadence) ? l.avg_cadence * 2 : undefined,
-    hr: num(l.avg_hr) ?? num(l.average_heartrate) ?? num(l.avg_heartrate), maxHr: num(l.max_hr), elev: num(l.elevation_gain),
-  }));
-  return { hasHr: !!p.has_heartrate, avgHr, maxHr, watts: num(p.average_watts), rpe: num(p.perceived_exertion), best, laps };
+/** Fastest time over `dist` metres from laps (linear inside a lap). */
+function bestOver(laps, dist) {
+  const L = laps.filter((l) => l.m > 0 && l.t > 0);
+  const tot = L.reduce((a, l) => a + l.m, 0);
+  if (tot < dist * 0.98) return;
+  let best;
+  for (let i = 0; i < L.length; i++) {
+    let m = 0, t = 0;
+    for (let j = i; j < L.length; j++) {
+      const need = dist - m;
+      if (L[j].m >= need) { t += L[j].t * (need / L[j].m); m = dist; break; }
+      m += L[j].m; t += L[j].t;
+    }
+    if (m >= dist && (best == null || t < best)) best = t;
+  }
+  return best;
 }
-async function loadStrava(refresh = false) {
+function mapPerf(d, splits, zones) {
+  const laps = ((splits && (splits.laps || splits.lapDTOs)) || []).map((l) => ({
+    m: num(l.distance_meters) ?? num(l.distance) ?? 0, t: num(l.moving_duration_seconds) ?? num(l.duration_seconds) ?? 0,
+    watts: num(l.avg_power_watts), cad: num(l.avg_cadence), hr: num(l.avg_hr_bpm), maxHr: num(l.max_hr_bpm), elev: num(l.elevation_gain_meters),
+  }));
+  const best = {};
+  for (const [k, m] of Object.entries({ Fastest400: 400, Fastest1k: 1000, FastestMile: 1609.34, Fastest2Mile: 3218.69, Fastest5k: 5000, Fastest10k: 10000 })) {
+    const t = bestOver(laps, m); if (t) best[k] = t;
+  }
+  const z = Array.isArray(zones) ? zones : (zones && (zones.zones || zones.hr_zones)) || [];
+  const avgHr = num(d?.avg_hr_bpm);
+  return {
+    hasHr: !!avgHr, avgHr, maxHr: num(d?.max_hr_bpm), watts: num(d?.avg_power_watts), np: num(d?.normalized_power_watts),
+    cadence: num(d?.avg_cadence), strideCm: num(d?.avg_stride_length_cm), gctMs: num(d?.avg_ground_contact_time_ms), voCm: num(d?.avg_vertical_oscillation_cm),
+    teLabel: d?.training_effect_label || null,
+    zones: z.map((x) => ({ zone: num(x.zoneNumber) ?? num(x.zone), secs: num(x.secsInZone) ?? num(x.seconds) ?? 0 })),
+    best, laps,
+  };
+}
+const GC = (tool, input, stale = 6048e5) => mcp.callTool(GARMIN, tool, input, { cache: { staleTime: stale, gcTime: 6048e5 } }).then((r) => r.payload);
+async function loadGarmin(refresh = false) {
   S.stravaLoading = true; S.stravaErr = null; render();
   try {
-    const res = await mcp.callTool(STRAVA, "list_activities",
-      { range_start: CONTEXT_FROM + "T00:00:00", range_end: addDays(today(), 1) + "T23:59:59", first: 100, use_preferred_units: true, ordering: "StartDateLocalAsc", include_polyline: true },
-      { cache: { staleTime: 0, gcTime: 6048e5, refresh: true } });
-    const list = (res.payload && res.payload.activities) || [];
-    S.allRuns = list.filter((a) => ACTIVITY_TYPES.includes(a.sport_type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    let page = 0, list = [];
+    for (let n = 0; n < 5; n++) {
+      const p = await mcp.callTool(GARMIN, "get_activities_by_date", { start_date: CONTEXT_FROM, end_date: today(), page, page_size: 200 },
+        { cache: { staleTime: 0, gcTime: 6048e5, refresh: true } });
+      const pl = p.payload || {};
+      list = list.concat(pl.activities || []);
+      if (!pl.has_more) break;
+      page = pl.next_page ?? page + 1;
+    }
+    S.allRuns = list.filter((a) => G_RUN.includes(a.type) || G_BALL.includes(a.type)).map(mapRun).sort((a, b) => String(a.start).localeCompare(String(b.start)));
     applyLogs();
     S.stravaLoading = false; render();
-    await loadZones();
+    loadFitness();
     await loadPerfs();
   } catch (e) {
     S.stravaLoading = false;
-    S.stravaErr = stravaMsg(e);
+    S.stravaErr = garminMsg(e);
     render();
   }
 }
-async function loadZones() {
-  try {
-    const r = await mcp.callTool(STRAVA, "get_athlete_zones", {}, { cache: { staleTime: 864e5, gcTime: 6048e5 } });
-    S.zones = r.payload || null; render();
-  } catch (e) { console.warn("zones", e); }
+async function loadFitness() {
+  try { S.vo2 = await GC("get_vo2max_trend", { start_date: addDays(today(), -89), end_date: today() }, 864e5 / 4); render(); } catch (e) { console.warn("vo2", e); }
+  try { S.prs = await GC("get_personal_record", {}, 864e5 / 4); render(); } catch (e) { console.warn("prs", e); }
+}
+/** Garmin VO2max trend → {latest, delta, days, pts} using measured days only. */
+function vo2Trend() {
+  const tr = (S.vo2 && (S.vo2.trend || S.vo2.data || S.vo2.values)) || [];
+  const pts = tr.filter((x) => num(x.vo2_max) && !x.carried_forward).map((x) => ({ date: String(x.date).slice(0, 10), v: x.vo2_max }));
+  if (!pts.length) { const l = num(S.vo2?.latest?.vo2_max) ?? num(S.vo2?.latest) ?? num(S.vo2?.current?.vo2_max); return l ? { latest: l, delta: 0, days: 0, pts: [] } : null; }
+  const a = pts[0], b = pts[pts.length - 1];
+  return { latest: b.v, delta: b.v - a.v, days: daysBetween(a.date, b.date), pts };
+}
+const TE_NAMES = { RECOVERY: "Recovery", AEROBIC_BASE: "Base", BASE: "Base", TEMPO: "Tempo", THRESHOLD: "Threshold", LACTATE_THRESHOLD: "Threshold", VO2MAX: "VO2max", ANAEROBIC_CAPACITY: "Anaerobic", ANAEROBIC: "Anaerobic", SPRINT: "Sprint" };
+const teName = (l) => TE_NAMES[l] || String(l || "").toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+function formRow(pf) {
+  if (!pf || !(pf.strideCm || pf.gctMs || pf.voCm || pf.np)) return "";
+  const c = (k, v) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  return `<section class="statrow form">${pf.strideCm ? c("Stride", (pf.strideCm / 100).toFixed(2) + " m") : ""}${pf.gctMs ? c("Ground contact", Math.round(pf.gctMs) + " ms") : ""}${pf.voCm ? c("Vert. osc.", pf.voCm.toFixed(1) + " cm") : ""}${pf.np ? c("Norm. power", Math.round(pf.np) + " W") : ""}</section>`;
 }
 /** Shoe per run = the shoe the plan picked for that day (you run in the suggested pair). */
 function shoeOf(run) { const s = S.weeks[monday(run.date)]?.sessions?.find((x) => x.date === run.date); return s && SHOES[s.shoe] && s.shoe !== "none" ? s.shoe : null; }
@@ -467,33 +511,42 @@ function shoeKm() {
   for (const k in out) out[k].total = out[k].start + out[k].challenge;
   return { shoes: out, untracked };
 }
+const FATAL = ["needs_reauth", "server_not_connected", "not_in_manifest", "blocked_by_policy", "approval_required"];
 async function loadPerfs() {
-  const need = S.allRuns.filter((r) => !S.perf[r.id]);
+  const need = S.allRuns.filter((r) => !S.perf[r.id]).reverse(); // newest first
   let i = 0;
   const worker = async () => {
     while (i < need.length) {
       const r = need[i++];
       try {
-        const res = await mcp.callTool(STRAVA, "get_activity_performance", { activity_id: r.id }, { cache: { staleTime: 6048e5, gcTime: 6048e5 } });
-        if (res.payload && typeof res.payload === "object") { S.perf[r.id] = mapPerf(res.payload); render(); }
+        const [d, sp, z] = await Promise.all([
+          GC("get_activity", { activity_id: Number(r.id) }),
+          GC("get_activity_splits", { activity_id: Number(r.id) }).catch(() => null),
+          GC("get_activity_hr_in_timezones", { activity_id: Number(r.id) }).catch(() => null),
+        ]);
+        S.perf[r.id] = mapPerf(d || {}, sp, z);
+        if (S.perf[r.id].cadence) r.cadence = S.perf[r.id].cadence;
+        const mv = num(d?.moving_duration_seconds);
+        if (mv && r.km) { r.moving = mv; r.pace = mv / r.km; }
+        render();
       } catch (e) {
-        if (["needs_reauth", "server_not_connected", "not_in_manifest", "blocked_by_policy", "approval_required"].includes(e?.code)) { S.stravaErr = stravaMsg(e); render(); return; }
+        if (FATAL.includes(e?.code)) { S.stravaErr = garminMsg(e); render(); return; }
         console.warn("perf", r.id, e);
       }
     }
   };
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker()]);
 }
-function stravaMsg(e) {
+function garminMsg(e) {
   switch (e?.code) {
-    case "needs_reauth": return "Your Strava connection has expired. Reconnect Strava in claude.ai Settings → Connectors, then reload.";
-    case "server_not_connected": return "Strava isn’t connected. Add the Strava connector in claude.ai Settings → Connectors, then reload.";
-    case "selection_required": return "You have more than one Strava connector — choose one when claude.ai asks, then reload.";
-    case "not_in_manifest": case "approval_required": return "Sub 20 Challenge needs your permission to read Strava. Tap “Load runs” and allow it.";
-    case "blocked_by_policy": return "Your organisation blocks the Strava connector for this page.";
-    case "server_unavailable": case "upstream_error": return "Strava didn’t answer just now. Try again in a minute.";
-    case "tool_error": return "Strava reported an error: " + (e.message || "unknown") + ". Strava’s connector needs an active Strava subscription.";
-    default: return "Couldn’t load Strava (" + (e?.code || "unknown") + ").";
+    case "needs_reauth": return "Your Garmin connection has expired. Reconnect Garmin in claude.ai Settings → Connectors, then reload.";
+    case "server_not_connected": return "Garmin isn’t connected. Add the Garmin connector in claude.ai Settings → Connectors, then reload.";
+    case "selection_required": return "You have more than one Garmin connector — choose one when claude.ai asks, then reload.";
+    case "not_in_manifest": case "approval_required": return "Sub 20 Challenge needs your permission to read Garmin. Tap “Load runs” and allow it.";
+    case "blocked_by_policy": return "Your organisation blocks the Garmin connector for this page.";
+    case "server_unavailable": case "upstream_error": return "Garmin didn’t answer just now. Try again in a minute.";
+    case "tool_error": return "Garmin reported an error: " + (e.message || "unknown") + ".";
+    default: return "Couldn’t load Garmin (" + (e?.code || "unknown") + ").";
   }
 }
 
@@ -562,7 +615,7 @@ function powerModel() {
   const base5kW = base ? S.perf[base.run.id]?.watts : undefined;
   return { ratio, goalW: ratio * (5000 / GOAL_S), base5kW, n: pts.length };
 }
-/** Max HR set by you (you've hit 203 running and 207 at football). Zones use Strava's %-of-max split. */
+/** Max HR set by you (you've hit 203 running and 207 at football). Zones: 65/81/89/97% of max. */
 const MAX_HR = 210;
 function hrZones() {
   const b = [0.65, 0.81, 0.89, 0.97].map((f) => Math.round(MAX_HR * f));
@@ -609,7 +662,7 @@ Coaching rules:
 - Paces come from CURRENT fitness in the data, except dedicated goal-pace work (about 4:00/km).
 - Hard days (intervals, tempo, goal pace, time trial) never on back-to-back days; normally 2 hard sessions a week, 3 only if clearly coping; no long run the day before a hard session; volume rises gradually (≤10–15% over recent weeks); at least one rest day; taper over the final 10 days; nothing hard within 2 days of the race.
 - The athlete's runs record running POWER and HEART RATE. Max HR is 210 (set by the athlete); give HR targets from the HR zones provided, plus power targets from the power data. Easy runs: trust HR; short reps: trust pace/power (HR lags).
-- Shoes — choose one per run, taking the Strava mileage in the data into account:
+- Shoes — choose one per run, taking the mileage in the data into account:
   vomero = Nike Vomero Plus, max-cushion daily trainer, ≈1 year old → easy, recovery, most long runs.
   cloudmonster = On Cloudmonster 3 Hyper, brand new → break it in on 2–3 easy/steady runs first, then tempo, longer intervals, long runs with fast finishes.
   vaporfly = Nike Vaporfly 4, carbon racer, ≈1 year old → race day, the time trial, and at most one goal-pace session a week.
@@ -632,8 +685,8 @@ function context(weekStart, asOf = today()) {
     const tp = trainPaces(p.v);
     L.push(`TRAINING PACES at current fitness: easy ${fmtP(tp.easy[0])}–${fmtP(tp.easy[1])}, threshold ${fmtP(tp.thr)}, interval ${fmtP(tp.int)}, repetition ${fmtP(tp.rep)}, goal ${fmtP(GOAL_PACE)}.`);
   }
-  const sp = S.zones?.sample_race_pace;
-  if (sp) L.push(`STRAVA'S OWN 5K ESTIMATE: ${sp.time}${sp.is_estimated ? " (estimated by Strava)" : ""}.`);
+  const vt = vo2Trend();
+  if (vt) L.push(`GARMIN VO2MAX: ${vt.latest.toFixed(1)} (${vt.delta >= 0 ? "+" : ""}${vt.delta.toFixed(1)} over ${vt.days} days). Garmin's estimate, not a lab test.`);
   if (pw) L.push(`POWER: median ${pw.ratio.toFixed(1)} W per m/s over ${pw.n} runs → goal pace needs ≈${Math.round(pw.goalW)} W.${pw.base5kW ? ` Baseline 5K averaged ${Math.round(pw.base5kW)} W.` : ""}`);
   { const sk = shoeKm().shoes; L.push("SHOES (km = estimate before 2 Nov + runs since, each run assumed in the shoe its plan picked):\n" + Object.entries(sk).map(([k, v]) => `- ${k}: ${SHOES[k].name}, ≈${v.total.toFixed(0)} km`).join("\n")); }
   L.push(z ? `HR ZONES (max HR ${MAX_HR}, set by the athlete): ${z.map((x) => `Z${x.zone} ${x.min}–${x.max ?? "max"}`).join(", ")}.` : "HR zones: unknown.");
@@ -647,6 +700,9 @@ function context(weekStart, asOf = today()) {
     if (pf?.avgHr) line += `, HR ${Math.round(pf.avgHr)}`;
     if (r.cadence) line += `, ${Math.round(r.cadence)} spm`;
     if (r.elev) line += `, +${Math.round(r.elev)} m`;
+    if (pf?.strideCm) line += `, stride ${(pf.strideCm / 100).toFixed(2)} m`;
+    if (pf?.gctMs) line += `, GCT ${Math.round(pf.gctMs)} ms`;
+    if (pf?.teLabel) line += `, Garmin TE ${pf.teLabel}`;
     if (r.weather?.temperature != null) line += `, ${Math.round(r.weather.temperature)}°C`;
     if (shoeOf(r)) line += `, shoe ${SHOES[shoeOf(r)].name}`;
     if (pf?.best?.Fastest5k) line += `, best 5K ${fmtT(pf.best.Fastest5k)}`;
@@ -692,17 +748,18 @@ async function analyse(run) {
   const detail = {
     date: run.date, name: run.name, distanceKm: +run.km.toFixed(2), movingTime: fmtT(run.moving), elapsedTime: fmtT(run.elapsed), avgPace: fmtP(run.pace),
     workRepPace: wp ? fmtP(wp) : undefined, avgPowerW: pf?.watts && Math.round(pf.watts), avgHr: pf?.avgHr, maxHr: pf?.maxHr, hasHeartRate: pf?.hasHr ?? false,
-    cadenceSpm: run.cadence && Math.round(run.cadence), elevationGainM: run.elev, weather: run.weather, perceivedExertion: pf?.rpe,
+    cadenceSpm: run.cadence && Math.round(run.cadence), elevationGainM: run.elev, strideM: pf?.strideCm && +(pf.strideCm / 100).toFixed(2), groundContactMs: pf?.gctMs && Math.round(pf.gctMs), verticalOscCm: pf?.voCm && +pf.voCm.toFixed(1), normalizedPowerW: pf?.np && Math.round(pf.np), garminTrainingEffect: pf?.teLabel || undefined,
+    hrZoneMinutes: pf?.zones?.length ? Object.fromEntries(pf.zones.map((z) => ["Z" + z.zone, Math.round(z.secs / 60)])) : undefined,
     bestEfforts: pf ? Object.fromEntries(Object.entries(pf.best).map(([k, v]) => [BE_LABEL[k] || k, fmtT(v)])) : undefined,
     laps: pf?.laps?.map((l) => ({ m: Math.round(l.m), pace: fmtP(l.t / (l.m / 1000)), watts: l.watts && Math.round(l.watts), spm: l.cad && Math.round(l.cad), hr: l.hr && Math.round(l.hr) })),
   };
   const planned = s ? { type: s.type, title: s.title, distanceKm: s.distanceKm, details: s.details, pace: s.paceMax ? `${fmtP(s.paceMin)}–${fmtP(s.paceMax)}` : null, power: s.powerMax ? `${s.powerMin}–${s.powerMax} W` : null, hr: s.hrMax ? `${s.hrMin}–${s.hrMax}` : null, shoe: s.shoe } : null;
   const rows = s ? sectionRows(run, s) : null;
   const secs = rows ? rows.map((r) => ({ section: r.name, target: r.target, actualPace: r.actual.pace && fmtP(r.actual.pace), actualSec: r.actual.sec && Math.round(r.actual.sec), watts: r.actual.watts && Math.round(r.actual.watts), hr: r.actual.hr && Math.round(r.actual.hr), flags: r.flags })) : null;
-  const runCtx = context(monday(run.date), run.date).split("\n").filter((l) => !/^(GOAL|BASELINE|CURRENT FITNESS|Short-effort|Trend|STRAVA'S OWN)/.test(l)).join("\n");
+  const runCtx = context(monday(run.date), run.date).split("\n").filter((l) => !/^(GOAL|BASELINE|CURRENT FITNESS|Short-effort|Trend|GARMIN VO2MAX)/.test(l)).join("\n");
   const lg = S.logs[run.id];
   const note = lg && (lg.comment || lg.effort) ? `\nATHLETE'S OWN NOTES ON THIS RUN (take them into account — they explain why it went the way it did; say so where they change your read): ${lg.effort ? `effort felt ${lg.effort}/10. ` : ""}${lg.comment ? `"${lg.comment}"` : ""}` : "";
-  const prompt = `${COACH}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off sub-20 is, or whether the goal is realistic — that lives on the Progress page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
+  const prompt = `${COACH}\n\n${runCtx}${note}\n\nREVIEW THIS RUN BRIEFLY. Talk only about THIS run: how each section was executed (pacing, evenness, recoveries), heart rate, power and cadence versus the targets, and what to change on the next run of this type. Do NOT mention the race goal, predicted times, VDOT, how far off sub-20 is, or whether the goal is realistic — that lives on the Stats page.\nPLANNED SESSION: ${planned ? JSON.stringify({ ...planned, distanceKm: planKm(s) }) : "none — unplanned run"}\nRUN DATA: ${JSON.stringify(detail)}${secs ? "\nSECTION-BY-SECTION (computed by the app, already shown to the athlete): " + JSON.stringify(secs) : ""}\n\nThe athlete sees the numbers already. Give only the verdict and the few points that matter for sub-20. Be specific (numbers), honest and short. Reply with only this JSON:\n{"verdict":"nailed|good|off-target|unplanned","headline":"max 12 words","good":["max 2 items, max 12 words each, each citing a number from this run"],"improve":["max 2 specific fixes drawn from this run's data (a section, lap, HR, power or cadence number), max 14 words each — no generic advice"],"next":"one concrete instruction for the next run of this type, max 15 words"}`;
   const ctl = new AbortController();
   S.busy = { kind: "analyse", ctl, runId: run.id }; render();
   try {
@@ -878,7 +935,7 @@ function renderWeek() {
   h += pendingBlock();
   if (!plan) {
     const pastRuns = S.runs.filter((r) => r.date >= wk && r.date <= t);
-    h += `<div class="empty"><h3>No plan for this week yet</h3><p class="small">${S.store === "ready" || S.store === "local" ? "Ask Claude in your chat to plan this week. It reads your Strava runs and your notes, and the plan appears here." : "Loading saved plans…"}</p></div>`;
+    h += `<div class="empty"><h3>No plan for this week yet</h3><p class="small">${S.store === "ready" || S.store === "local" ? "Ask Claude in your chat to plan this week. It reads your Garmin runs and your notes, and the plan appears here." : "Loading saved plans…"}</p></div>`;
     if (pastRuns.length) h += `<div class="eyebrow">Done so far</div><section class="days">${pastRuns.map((r) => dayRow(r.date, null)).join("")}</section>`;
     return h;
   }
@@ -985,7 +1042,7 @@ function renderProgress() {
   const z = hrZones();
   const left = daysBetween(t, RACE);
   let h = `<div class="week-head"><div><div class="eyebrow">Progress · data only</div><div class="range">${left} days to go</div></div></div>${banners()}${pendingBanner()}`;
-  if (!p) return h + `<div class="empty">${S.stravaLoading ? `<div class="spinner"></div><p>Reading your Strava runs…</p>` : `<p>No runs found since ${esc(fdate(START))}.</p>`}</div>`;
+  if (!p) return h + `<div class="empty">${S.stravaLoading ? `<div class="spinner"></div><p>Reading your Garmin runs…</p>` : `<p>No runs found since ${esc(fdate(START))}.</p>`}</div>`;
   const gap = p.s - GOAL_S;
   const base = p.base;
   const prog = base ? Math.max(0, Math.min(1, (base.s - p.s) / Math.max(1, base.s - GOAL_S))) : 0;
@@ -1040,7 +1097,7 @@ function renderProgress() {
       ${z ? z.map((x) => `<dt>HR zone ${x.zone}</dt><dd>${x.min ? x.min : "<"}${x.max ? (x.min ? "–" : "") + x.max : "+"} bpm</dd>`).join("") : ""}
     </dl><p class="small muted">${challengeRuns().some((r) => S.perf[r.id]?.hasHr) ? "Heart rate is being recorded." : "Your recent runs have no heart-rate data, so power is the effort measure. HR targets assume a strap or watch."}</p></section></div>`;
 
-  // shoes (from the plan, not Strava)
+  // shoes (from the plan)
   const sk = shoeKm();
   h += `<section class="card"><h3>Shoes</h3><div class="tablewrap"><table><thead><tr><th>Shoe</th><th class="r">Before 2 Nov</th><th class="r">Since</th><th class="r">Total</th></tr></thead><tbody>${Object.entries(sk.shoes).map(([k, v]) => `<tr><td style="white-space:normal">${esc(SHOES[k].name)}</td><td class="r">${v.start ? "≈" + v.start : "0"}</td><td class="r">${v.challenge.toFixed(1)}</td><td class="r"><strong>${v.total.toFixed(0)} km</strong>${k === "vaporfly" && v.total > 400 ? ` <span style="color:var(--warn)">· foam ageing</span>` : ""}</td></tr>`).join("")}</tbody></table></div><p class="small muted">Each run counts towards the shoe its plan suggested.${sk.untracked > 0.05 ? ` ${sk.untracked.toFixed(1)} km of unplanned running isn’t assigned to a shoe.` : ""}</p></section>`;
 
@@ -1062,51 +1119,8 @@ function renderDrawer() {
     h += `<section class="card"><p>Race day: 5K under 19:59, about ${fmtP(GOAL_PACE)}. The race-week plan appears once you ask Claude for it on Monday 7 December.</p></section>`;
   }
   for (const r of runs) h += runDetail(r, s);
-  if (!runs.length && s && s.type !== "rest" && d < today()) h += `<div class="banner bad"><span class="dot"></span><div>No run recorded on Strava for this day.</div></div>`;
+  if (!runs.length && s && s.type !== "rest" && d < today()) h += `<div class="banner bad"><span class="dot"></span><div>No run recorded on Garmin for this day.</div></div>`;
   return h;
-}
-/* ---------- Route map (drawn from Strava's route line; no street tiles) ---------- */
-function decodePolyline(str) {
-  const pts = []; let i = 0, lat = 0, lng = 0;
-  while (i < str.length) {
-    for (const k of [0, 1]) {
-      let b, shift = 0, res = 0;
-      do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < str.length);
-      const d = res & 1 ? ~(res >> 1) : res >> 1;
-      if (k === 0) lat += d; else lng += d;
-    }
-    pts.push([lat / 1e5, lng / 1e5]);
-  }
-  return pts;
-}
-function routeMap(r) {
-  if (!r.polyline) return "";
-  let pts;
-  try { pts = decodePolyline(r.polyline); } catch { return ""; }
-  if (pts.length < 2) return "";
-  const lat0 = pts.reduce((a, p) => a + p[0], 0) / pts.length, kx = Math.cos((lat0 * Math.PI) / 180);
-  const xy = pts.map(([la, ln]) => [ln * kx, -la]);
-  const xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  const W = 360, H = 220, pad = 16;
-  const sc = Math.min((W - 2 * pad) / Math.max(maxX - minX, 1e-6), (H - 2 * pad) / Math.max(maxY - minY, 1e-6));
-  const ox = (W - (maxX - minX) * sc) / 2, oy = (H - (maxY - minY) * sc) / 2;
-  const P = xy.map(([x, y]) => [ox + (x - minX) * sc, oy + (y - minY) * sc]);
-  const d = P.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-  // scale bar: metres per SVG unit (1° lat ≈ 111.32 km)
-  const mPerUnit = 111320 / sc, bar = [100, 200, 500, 1000, 2000].find((m) => m / mPerUnit > 50) || 2000;
-  const [sx, sy] = P[0], [fx, fy] = P[P.length - 1];
-  return `<section class="card routemap"><div class="prof-head"><span class="eyebrow">Route</span><a class="small" href="https://www.strava.com/activities/${esc(r.id)}" target="_blank" rel="noopener">Open full map on Strava ↗</a></div>
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Route of this run">
-      <rect x="0" y="0" width="${W}" height="${H}" rx="10" fill="var(--surface-2)"/>
-      <path d="${d}" fill="none" stroke="var(--surface)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="${d}" fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="${fx.toFixed(1)}" cy="${fy.toFixed(1)}" r="6" fill="var(--bad)" stroke="var(--surface)" stroke-width="2"/>
-      <circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6" fill="var(--good)" stroke="var(--surface)" stroke-width="2"/>
-      <line x1="${W - pad - bar / mPerUnit}" x2="${W - pad}" y1="${H - 12}" y2="${H - 12}" stroke="var(--fg-2)" stroke-width="2"/>
-      <text class="ax" x="${W - pad}" y="${H - 17}" text-anchor="end">${bar >= 1000 ? bar / 1000 + " km" : bar + " m"}</text>
-    </svg>
-    <div class="legend small"><span><i class="sw" style="background:var(--good);border-radius:50%"></i>Start</span><span><i class="sw" style="background:var(--bad);border-radius:50%"></i>Finish</span><span class="muted">North is up</span></div></section>`;
 }
 function runDetail(r, s) {
   const pf = S.perf[r.id];
@@ -1128,11 +1142,11 @@ function runDetail(r, s) {
     const dev = got && target ? ((got - target) / target) * 100 : null;
     h += `<p class="small">Target ${fmtT(s.paceMin)}–${fmtT(s.paceMax)}/km · ${wp ? "work reps" : "whole run"} ${fmtP(got)}${dev != null ? ` (${dev > 0 ? "+" : ""}${dev.toFixed(1)}%)` : ""}</p>`;
   }
-  h += routeMap(r);
+  h += formRow(pf);
   const rows = s ? sectionRows(r, s) : null;
   if (rows) h += `<section class="card"><h3>Sections</h3>${sectionTable(rows)}</section>`;
   const sh = shoeOf(r);
-  h += `<p class="small muted">${sh ? `Shoe: ${esc(SHOES[sh].name)}` : ""}${sh && r.weather ? " · " : ""}${r.weather ? esc([r.weather.condition, r.weather.temperature != null ? Math.round(r.weather.temperature) + "°C" : null, r.weather.wind_speed != null ? Math.round(r.weather.wind_speed) + " km/h wind" : null].filter(Boolean).join(" · ")) : ""}</p>`;
+  h += `<p class="small muted">${sh ? `Shoe: ${esc(SHOES[sh].name)}` : ""}${sh && pf?.teLabel ? " · " : ""}${pf?.teLabel ? "Garmin: " + esc(teName(pf.teLabel)) : ""}</p>`;
   if (!isLogged(r)) { if (S.logsReady) h += pendingCard(r); return h; }
   const lg = S.logs[r.id];
   if (lg && (lg.comment || lg.effort)) h += `<section class="card"><div class="eyebrow">Your notes</div>${lg.effort ? `<p class="small">Effort <strong>${esc(lg.effort)}/10</strong></p>` : ""}${lg.comment ? `<p>${esc(lg.comment)}</p>` : ""}</section>`;
@@ -1144,7 +1158,7 @@ function runDetail(r, s) {
       <div class="agrid">${list("Went well", a.good, "good")}${list("Work on", a.improve, "warn")}</div>
       ${a.next ? `<p class="next-run"><span class="eyebrow">Next run</span> ${esc(a.next)}</p>` : ""}
       <p class="small muted">Analysed ${esc(new Date(a.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))} · <button class="linkish" data-act="analyse" data-run="${esc(r.id)}" ${S.busy || !S.sample ? "disabled" : ""}>Analyse again</button></p>`;
-  } else h += `<p class="muted small">${pf ? "A short verdict on this run, from the coach." : "Loading laps and best efforts from Strava…"}</p><button class="btn primary" data-act="analyse" data-run="${esc(r.id)}" ${S.busy || !S.sample || !pf ? "disabled" : ""}>Analyse this run</button>`;
+  } else h += `<p class="muted small">${pf ? "A short verdict on this run, from the coach." : "Loading laps from Garmin…"}</p><button class="btn primary" data-act="analyse" data-run="${esc(r.id)}" ${S.busy || !S.sample || !pf ? "disabled" : ""}>Analyse this run</button>`;
   h += `</section>`;
   return h;
 }
@@ -1159,7 +1173,7 @@ function render() {
   const fid = document.activeElement?.dataset?.log, sel = fid ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   renderHeader();
   const view = $("#view");
-  if (S.stravaLoading && !S.allRuns.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Strava…</p></div>`;
+  if (S.stravaLoading && !S.allRuns.length && !S.stravaErr) view.innerHTML = `<div class="empty"><div class="spinner"></div><p>Loading your runs from Garmin…</p></div>`;
   else view.innerHTML = S.view === "week" ? renderWeek() : S.view === "calendar" ? renderCalendar() : renderProgress();
   if (lastView !== S.view) { window.scrollTo(0, 0); lastView = S.view; }
   const scrim = $("#scrim");
@@ -1182,7 +1196,7 @@ document.addEventListener("click", (e) => {
   if (a === "close") { S.drawer = null; render(); }
   else if (a === "stop") { S.busy?.ctl?.abort(); }
   else if (a === "dismiss-sample") { S.sampleErr = null; render(); }
-  else if (a === "reload-strava") { if (mcp) loadStrava(true); }
+  else if (a === "reload-strava") { if (mcp) loadGarmin(true); }
   else if (a === "log") { const r = S.allRuns.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; logRun(r); } }
   else if (a === "analyse") { const r = S.allRuns.find((x) => x.id === act.dataset.run); if (r) { S.sampleErr = null; analyse(r); } }
 });
@@ -1199,11 +1213,11 @@ window.addEventListener("hashchange", () => { const v = location.hash.slice(1); 
 /* ================= Boot ================= */
 render();
 (async () => {
-  if (!window.claude?.use) { S.stravaLoading = false; S.stravaErr = "Open Sub 20 Challenge inside claude.ai to load your Strava runs."; S.store = "local"; lsLoad(); render(); return; }
+  if (!window.claude?.use) { S.stravaLoading = false; S.stravaErr = "Open Sub 20 Challenge inside claude.ai to load your Garmin runs."; S.store = "local"; lsLoad(); render(); return; }
   initStore();
   claude.use("sample").then((s) => { S.sample = s; render(); });
   mcp = await claude.use("mcp");
   if (!mcp) { S.stravaLoading = false; S.stravaErr = "Connectors aren’t available in this view. Open Sub 20 Challenge in claude.ai."; render(); return; }
-  loadStrava(false);
+  loadGarmin(false);
 })();
 </script>
