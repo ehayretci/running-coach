@@ -27,4 +27,4 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 - Only strides and walks are written in seconds. Reps, tempo blocks and jogs are written in distance.
 - Planned km include warm-up, strides, recoveries and cool-down.
 - Keep text short: no "why" explanations, 1–3 tips per run, and shoe names only.
-- Run analysis covers only that run. The goal outlook belongs on the Progress page.
+- Run analysis covers only that run. The goal outlook belongs on the Stats page.

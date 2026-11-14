@@ -52,3 +52,4 @@ Edit `artifact/sub20-challenge.html`. Keep the database collections (weeks, logs
 **Test:** update the scratchpad mock (mock.js/h4.cjs) to the Garmin shapes above, check for no errors in light/dark at 390 and 1000 px, then publish to the same URL with the new capabilities. Afterwards, verify the logs show as logged (not pending) for Garmin IDs.
 
 - 14 Nov: Step 4 done. Garmin pipeline in page (loadGarmin/mapRun/mapPerf/bestOver/loadFitness/garminMsg). Best efforts computed from laps. Route map removed (no polyline in Garmin). Form row (stride/GCT/VO/NP) in run detail. Not yet published.
+- 14 Nov: Step 6 done. Stats tab (4 sections) + Records tab built; #progress redirects to #stats. Step 7 testing: Garmin-shaped mock (real list + real 12 Nov splits + backup db) — no errors, 0 pending (logs match Garmin IDs), no overflow at 390/1000 light/dark.
