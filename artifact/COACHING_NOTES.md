@@ -30,6 +30,7 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 
 ## Format preferences
 - Only strides and walks are written in seconds. Reps, tempo blocks and jogs are written in distance.
+- End every run's details (football too) with 10 min stretching: calves, hamstrings, quads, hips (Erim, 16 Nov).
 - Planned km include warm-up, strides, recoveries and cool-down.
 - Keep text short: no "why" explanations, 1–3 tips per run, and shoe names only.
 - Run analysis covers only that run. The goal outlook belongs on the Goal page.

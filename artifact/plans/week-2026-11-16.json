@@ -1,7 +1,7 @@
 {
  "weekStart": "2026-11-16",
  "notes": "Mon rest. Sun 15 Nov: 8 km easy, felt great (178 spm). Cloudmonsters hurt the soles at easy pace, so easy runs go in Vomeros. Start strong Tuesday. Football Sunday 22 Nov (hard). A rest day always sits between long interval sessions.",
- "summary": "Week 3 of 6. Goal-pace 800s Tuesday, football Sunday. 28.3 km running.",
+ "summary": "Week 3 of 6. Goal-pace 800s Tuesday, football Sunday. 28.9 km running.",
  "sessions": [
   {
    "id": "w3-mon",
@@ -29,7 +29,7 @@
    "type": "goalpace",
    "title": "Goal pace: 6 × 800 m",
    "distanceKm": 10.7,
-   "details": "2 km warm-up + 4 × 20 s strides · 6 × 800 m @ 3:58–4:02/km (3:10–3:14 per rep), 400 m easy jog · 1.2 km cool-down.",
+   "details": "2 km warm-up + 4 × 20 s strides · 6 × 800 m @ 3:58–4:02/km (3:10–3:14 per rep), 400 m easy jog · 1.2 km cool-down · 10 min stretching: calves, hamstrings, quads, hips.",
    "shoe": "vaporfly",
    "tips": [
     "Rep 1 at 3:12, not faster.",
@@ -109,7 +109,7 @@
    "type": "recovery",
    "title": "Recovery run",
    "distanceKm": 4,
-   "details": "4 km very easy.",
+   "details": "4 km very easy · 10 min stretching: calves, hamstrings, quads, hips.",
    "shoe": "vomero",
    "tips": [
     "HR under 150, whatever the pace."
@@ -136,30 +136,59 @@
    "id": "w3-thu",
    "date": "2026-11-19",
    "type": "easy",
-   "title": "Easy run",
-   "distanceKm": 8,
-   "details": "8 km easy on a flat route.",
+   "title": "Easy run + steady finish",
+   "distanceKm": 8.8,
+   "details": "6 km easy · 2 km steady @ 4:50–5:00/km · 6 × 20 s strides with 60 s walk-back · 10 min stretching: calves, hamstrings, quads, hips.",
    "shoe": "vomero",
    "tips": [
-    "Keep HR under 155.",
-    "Hold ~178 spm like last Sunday."
+    "Steady, not tempo: HR under 170.",
+    "Hold ~178 spm."
    ],
    "segments": [
     {
      "label": "Easy",
-     "km": 8,
+     "km": 6,
      "pace": [
       330,
       360
      ]
+    },
+    {
+     "label": "Steady",
+     "km": 2,
+     "pace": [
+      290,
+      300
+     ]
+    },
+    {
+     "kind": "strides",
+     "label": "Stride",
+     "reps": 6,
+     "work": {
+      "sec": 20,
+      "pace": [
+       205,
+       220
+      ]
+     },
+     "rest": {
+      "sec": 60,
+      "pace": [
+       720,
+       720
+      ],
+      "label": "Walk back"
+     },
+     "dropLastRest": true
     }
    ],
-   "paceMin": 330,
+   "paceMin": 290,
    "paceMax": 360,
    "powerMin": 260,
    "powerMax": 280,
    "hrMin": 135,
-   "hrMax": 155,
+   "hrMax": 170,
    "why": ""
   },
   {
@@ -168,7 +197,7 @@
    "type": "easy",
    "title": "Easy run + strides",
    "distanceKm": 5.6,
-   "details": "5 km easy, then 4 × 20 s strides with 60 s walk-back.",
+   "details": "5 km easy, then 4 × 20 s strides with 60 s walk-back · 10 min stretching: calves, hamstrings, quads, hips.",
    "shoe": "vomero",
    "tips": [
     "Keep HR under 155.",
@@ -239,7 +268,7 @@
    "type": "football",
    "title": "6-a-side football",
    "distanceKm": 0,
-   "details": "Match play. This week's second hard session: no extra running.",
+   "details": "Match play. This week's second hard session: no extra running · 10 min stretching after.",
    "shoe": "none",
    "tips": [
     "Warm up 10 min: jog, leg swings, short sprints."
