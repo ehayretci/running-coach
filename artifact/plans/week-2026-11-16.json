@@ -1,7 +1,7 @@
 {
  "weekStart": "2026-11-16",
  "notes": "Mon rest. Sun 15 Nov: 8 km easy, felt great (178 spm). Cloudmonsters hurt the soles at easy pace, so easy runs go in Vomeros. Start strong Tuesday. Football Sunday 22 Nov (hard). A rest day always sits between long interval sessions.",
- "summary": "Week 3 of 6. Goal-pace 800s Tuesday, football Sunday. 28.9 km running.",
+ "summary": "Week 3 of 6. Goal-pace 800s Tuesday, football Sunday. 34.1 km incl. ≈5 km football.",
  "sessions": [
   {
    "id": "w3-mon",
@@ -266,8 +266,8 @@
    "id": "w3-sun",
    "date": "2026-11-22",
    "type": "football",
-   "title": "6-a-side football",
-   "distanceKm": 0,
+   "title": "6-a-side football (≈5 km)",
+   "distanceKm": 5,
    "details": "Match play. This week's second hard session: no extra running · 10 min stretching after.",
    "shoe": "none",
    "tips": [
