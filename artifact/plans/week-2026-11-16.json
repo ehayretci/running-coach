@@ -1,7 +1,7 @@
 {
  "weekStart": "2026-11-16",
- "notes": "Mon rest. Sun 15 Nov: 8 km easy, felt great (178 spm). Cloudmonsters hurt the soles at easy pace, so easy runs go in Vomeros. Start strong Tuesday. Football on Sunday? Tell me and Friday turns easy.",
- "summary": "Week 3 of 6. Goal-pace 800s Tuesday, tempo Friday. 35.6 km (+9%).",
+ "notes": "Mon rest. Sun 15 Nov: 8 km easy, felt great (178 spm). Cloudmonsters hurt the soles at easy pace, so easy runs go in Vomeros. Start strong Tuesday. Football Sunday 22 Nov (hard). A rest day always sits between long interval sessions.",
+ "summary": "Week 3 of 6. Goal-pace 800s Tuesday, football Sunday. 28.3 km running.",
  "sessions": [
   {
    "id": "w3-mon",
@@ -136,9 +136,39 @@
    "id": "w3-thu",
    "date": "2026-11-19",
    "type": "easy",
+   "title": "Easy run",
+   "distanceKm": 8,
+   "details": "8 km easy on a flat route.",
+   "shoe": "vomero",
+   "tips": [
+    "Keep HR under 155.",
+    "Hold ~178 spm like last Sunday."
+   ],
+   "segments": [
+    {
+     "label": "Easy",
+     "km": 8,
+     "pace": [
+      330,
+      360
+     ]
+    }
+   ],
+   "paceMin": 330,
+   "paceMax": 360,
+   "powerMin": 260,
+   "powerMax": 280,
+   "hrMin": 135,
+   "hrMax": 155,
+   "why": ""
+  },
+  {
+   "id": "w3-fri",
+   "date": "2026-11-20",
+   "type": "easy",
    "title": "Easy run + strides",
-   "distanceKm": 4.6,
-   "details": "4 km easy, then 4 × 20 s strides with 60 s walk-back.",
+   "distanceKm": 5.6,
+   "details": "5 km easy, then 4 × 20 s strides with 60 s walk-back.",
    "shoe": "vomero",
    "tips": [
     "Keep HR under 155.",
@@ -147,7 +177,7 @@
    "segments": [
     {
      "label": "Easy",
-     "km": 4,
+     "km": 5,
      "pace": [
       330,
       355
@@ -184,95 +214,15 @@
    "why": ""
   },
   {
-   "id": "w3-fri",
-   "date": "2026-11-20",
-   "type": "tempo",
-   "title": "Tempo: 2 × 2.5 km",
-   "distanceKm": 9.8,
-   "details": "2 km warm-up + 4 × 20 s strides · 2 × 2.5 km @ 4:24–4:30/km, 600 m easy jog · 1.5 km cool-down.",
-   "shoe": "cloudmonster",
-   "tips": [
-    "Pace range is a cap: no faster than 4:24.",
-    "Even splits: lap every km.",
-    "Eat 3+ h before."
-   ],
-   "segments": [
-    {
-     "label": "Warm-up",
-     "km": 2,
-     "pace": [
-      330,
-      360
-     ]
-    },
-    {
-     "kind": "strides",
-     "label": "Stride",
-     "reps": 4,
-     "work": {
-      "sec": 20,
-      "pace": [
-       205,
-       220
-      ]
-     },
-     "rest": {
-      "sec": 60,
-      "pace": [
-       720,
-       720
-      ],
-      "label": "Walk back"
-     }
-    },
-    {
-     "kind": "reps",
-     "label": "Tempo",
-     "reps": 2,
-     "work": {
-      "km": 2.5,
-      "pace": [
-       264,
-       270
-      ]
-     },
-     "rest": {
-      "km": 0.6,
-      "pace": [
-       380,
-       420
-      ],
-      "label": "Easy jog"
-     },
-     "dropLastRest": true
-    },
-    {
-     "label": "Cool-down",
-     "km": 1.5,
-     "pace": [
-      330,
-      370
-     ]
-    }
-   ],
-   "paceMin": 264,
-   "paceMax": 270,
-   "powerMin": 350,
-   "powerMax": 362,
-   "hrMin": 176,
-   "hrMax": 186,
-   "why": ""
-  },
-  {
    "id": "w3-sat",
    "date": "2026-11-21",
    "type": "rest",
    "title": "Rest",
    "distanceKm": 0,
-   "details": "Rest after Friday's tempo.",
+   "details": "Rest before football.",
    "shoe": "none",
    "tips": [
-    "Easy walk is fine."
+    "Hydrate and eat normal carbs."
    ],
    "segments": [],
    "paceMin": 0,
@@ -286,31 +236,21 @@
   {
    "id": "w3-sun",
    "date": "2026-11-22",
-   "type": "easy",
-   "title": "Easy run",
-   "distanceKm": 6.5,
-   "details": "6.5 km easy on a flat route.",
-   "shoe": "vomero",
+   "type": "football",
+   "title": "6-a-side football",
+   "distanceKm": 0,
+   "details": "Match play. This week's second hard session: no extra running.",
+   "shoe": "none",
    "tips": [
-    "Keep HR under 155: walk-jog a hill if needed.",
-    "Hold ~178 spm like last Sunday."
+    "Warm up 10 min: jog, leg swings, short sprints."
    ],
-   "segments": [
-    {
-     "label": "Easy",
-     "km": 6.5,
-     "pace": [
-      330,
-      360
-     ]
-    }
-   ],
-   "paceMin": 330,
-   "paceMax": 360,
-   "powerMin": 260,
-   "powerMax": 280,
-   "hrMin": 135,
-   "hrMax": 155,
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 170,
+   "hrMax": 195,
    "why": ""
   }
  ],

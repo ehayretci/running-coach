@@ -12,6 +12,7 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 5. **Weekly running km rises by 10% at most.** Week 2 jumped about 30% and contributed to the fatigue.
 6. **Pace ranges are caps.** Tempo at 4:23 against a 4:28–4:34 target cost the next session. Running faster than the range is not a bonus.
 7. **Check soreness before every hard session.** If legs or calves are sore after the warm-up, make it an easy run and move the session; never push through.
+8. **Always a full rest day between two long (≈10 km) interval or hard sessions** (Erim, 16 Nov).
 
 ## Findings about Erim
 - **Max HR is 210** (set by Erim; observed 203 running and 207 at football). Easy runs stay under about 158 bpm.
