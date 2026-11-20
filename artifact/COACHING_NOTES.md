@@ -7,8 +7,8 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 ## Recovery rules (after the 12 Nov session, where Erim started sore and ended exhausted)
 1. **At least 72 h between hard sessions.** Hard sessions are intervals, goal pace, tempo, time trials and football. Leave at least two easy or rest days between them. Never schedule two hard sessions 48 h apart.
 2. **At most 2 hard sessions a week, and football counts as one.** A match averaged 185 bpm for 55 min, which makes it a full hard session.
-3. **The day after a hard session is rest or recovery:** at most 5 km, HR under 150.
-4. **The day before a hard session is rest or easy:** at most 5 km.
+3. **The day after a hard session is rest or recovery:** exactly 5 km, HR under 150.
+4. **The day before a hard session is rest or easy:** 5 km.
 5. **Weekly running km rises by 10% at most.** Week 2 jumped about 30% and contributed to the fatigue.
 6. **Pace ranges are caps.** Tempo at 4:23 against a 4:28–4:34 target cost the next session. Running faster than the range is not a bonus.
 7. **Check soreness before every hard session.** If legs or calves are sore after the warm-up, make it an easy run and move the session; never push through.
@@ -30,6 +30,7 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 
 ## Format preferences
 - Only strides and walks are written in seconds. Reps, tempo blocks and jogs are written in distance.
+- **No run shorter than 5 km.** 5 km is Erim's shortest route; recovery runs are 5 km too (Erim, 20 Nov).
 - Count football as ≈5 km in the plan (Erim, 16 Nov).
 - End every run's details (football too) with 10 min stretching: calves, hamstrings, quads, hips (Erim, 16 Nov).
 - Planned km include warm-up, strides, recoveries and cool-down.
