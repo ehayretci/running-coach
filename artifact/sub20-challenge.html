@@ -78,7 +78,8 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-
 .tabs button[aria-current="page"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
 .bottom { display: none; }
 @media (max-width: 640px) {
-  .tabs { display: none; }
+  .tabs, .top { display: none; }
+  #view { padding-top: max(12px, env(safe-area-inset-top, 0px)); }
   .bottom { display: flex; position: fixed; inset: auto 0 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line); padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
   .bottom button { flex: 1; border: 0; background: none; padding: 8px 0; font-weight: 600; font-size: 0.85rem; color: var(--muted); border-radius: 8px; }
   .bottom button[aria-current="page"] { color: var(--fg); background: var(--surface-2); }
@@ -186,7 +187,7 @@ button.cell:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--li
 /* Stats */
 .hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px; }
 .big { font-family: var(--font-display); font-weight: 800; font-size: 3rem; line-height: 0.95; font-variant-numeric: tabular-nums; }
-.big.goal { color: var(--accent-strong); }
+.big.goal, .goal-name { color: var(--accent-strong); }
 .mid { font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; line-height: 1; font-variant-numeric: tabular-nums; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
@@ -274,10 +275,6 @@ ul.tips { margin: 0; padding-left: 18px; display: flex; flex-direction: column; 
 
 <header class="top">
   <div class="wrap top-inner">
-    <div class="brand">
-      <span class="brand-mark">Running Coach</span>
-      <span class="brand-sub" id="countdown"></span>
-    </div>
     <nav class="tabs" id="tabs" aria-label="Sections">
       <button type="button" data-view="goal">Goal</button>
       <button type="button" data-view="week">Week</button>
@@ -370,7 +367,7 @@ applyGoal(null);
 
 /* ================= State ================= */
 const S = {
-  view: location.hash === "#progress" ? "stats" : ["goal", "week", "calendar", "stats", "records"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "goal",
+  view: location.hash === "#progress" ? "stats" : ["goal", "week", "calendar", "stats", "records"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "week",
   runs: [], perf: {}, zones: null, vo2: null, prs: null, stravaErr: null, stravaLoading: true,
   weeks: {}, analyses: {}, logs: {}, insights: "", logsReady: false, allRuns: [], logDrafts: {}, logEffort: {},
   store: null, storeErr: null,
@@ -628,10 +625,10 @@ function summariseStream(recs) {
   }
   return { v: 1, route, best, series, drift, n: R.length };
 }
-async function fetchStream(id) {
+async function fetchStream(id, size = 800) {
   let recs = [], off = 0;
-  for (let n = 0; n < 4; n++) {
-    const res = await mcp.callTool(GARMIN, "get_activity_fit_messages", { activity_id: Number(id), message_types: ["record"], include_records: true, message_offset: off, message_limit: 5000 }, { cache: { staleTime: 6048e5, gcTime: 864e5 } });
+  for (let n = 0; n < 40; n++) {
+    const res = await mcp.callTool(GARMIN, "get_activity_fit_messages", { activity_id: Number(id), message_types: ["record"], include_records: true, message_offset: off, message_limit: size }, { cache: { staleTime: 6048e5, gcTime: 864e5 } });
     const pl = res.payload || {};
     recs = recs.concat(pl.messages || []);
     const nx = pl.pagination?.next_offset; if (nx == null) break; off = nx;
@@ -648,7 +645,8 @@ async function loadStream(r) {
   if (!mcp || S.streams[r.id] || streamBusy.has(r.id)) return;
   streamBusy.add(r.id);
   try {
-    const st = await fetchStream(r.id);
+    let st;
+    try { st = await fetchStream(r.id, 800); } catch (e) { if (FATAL.includes(e?.code)) throw e; st = await fetchStream(r.id, 300); }
     if (st) {
       S.streams[r.id] = st; mergeStream(r.id); render();
       if (db) db.collection("streams").doc(r.id).set(st).catch((e) => console.warn("stream save", e));
@@ -1372,12 +1370,7 @@ const PR_KEYS = { 1: ["1 km", 1000], 2: ["1 mile", 1609.34], 3: ["5 km", 5000], 
 function renderRecords() {
   let h = `<div class="week-head"><div><div class="eyebrow">Records</div><div class="range">Personal bests</div></div></div>${banners()}`;
   const prs = (Array.isArray(S.prs) ? S.prs : S.prs?.records || []).filter((r) => PR_KEYS[r.type_id]);
-  const pr5 = prs.find((r) => PR_KEYS[r.type_id][1] && Math.abs(PR_KEYS[r.type_id][1] - GOAL_M) < 1);
-  h += `<section class="hero">
-    <div><div class="eyebrow">${esc(GOAL_DIST)} PR</div><div class="big">${pr5 ? fmtT(Math.floor(pr5.raw_value)) : "–"}</div><p class="small muted">${pr5 ? esc(fdate(pr5.date, { day: "numeric", month: "short", year: "numeric" })) : S.prs ? "" : "Loading…"}</p></div>
-    <div><div class="eyebrow">Target</div><div class="big goal">${fmtT(GOAL_S)}</div><p class="small muted">${pr5 ? (pr5.raw_value > GOAL_S ? `${Math.floor(pr5.raw_value) - GOAL_S} s to cut` : "Done") : ""}</p></div>
-  </section>`;
-  h += `<section class="card"><h3>All-time (Garmin)</h3>${prs.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Date</th></tr></thead><tbody>${prs.sort((a, b) => a.type_id - b.type_id).map((r) => {
+  h += `<section class="card"><h3>All-time</h3>${prs.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Date</th></tr></thead><tbody>${prs.sort((a, b) => a.type_id - b.type_id).map((r) => {
       const [lab, m] = PR_KEYS[r.type_id];
       return `<tr><td>${esc(lab)}</td><td class="r"><strong>${m ? fmtT(Math.floor(r.raw_value)) : (r.raw_value / 1000).toFixed(2) + " km"}</strong></td><td class="r">${m ? fmtP(r.raw_value / (m / 1000)) : "–"}</td><td class="r">${esc(fdate(r.date, { day: "numeric", month: "short", year: "2-digit" }))}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="muted small">${S.prs ? "No records." : "Loading…"}</p>`}</section>`;
   // best since the challenge started (from laps)
@@ -1389,7 +1382,7 @@ function renderRecords() {
     if (b) rows.push({ lab, m, ...b });
   }
   const longest = challengeRuns().sort((a, b) => b.km - a.km)[0];
-  h += `<section class="card"><h3>Best since ${esc(fdate(START, { day: "numeric", month: "short" }))}</h3>${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Run</th></tr></thead><tbody>${rows.map((x) => `<tr data-open="${esc(x.r.date)}" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="r"><strong>${fmtT(x.s)}</strong></td><td class="r">${fmtP(x.s / (x.m / 1000))}</td><td class="r">${esc(fdate(x.r.date, { day: "numeric", month: "short" }))}</td></tr>`).join("")}${longest ? `<tr data-open="${esc(longest.date)}" style="cursor:pointer"><td>Longest run</td><td class="r"><strong>${longest.km.toFixed(2)} km</strong></td><td class="r">${fmtP(longest.pace)}</td><td class="r">${esc(fdate(longest.date, { day: "numeric", month: "short" }))}</td></tr>` : ""}</tbody></table></div><p class="small muted">From lap splits of logged runs.</p>` : `<p class="muted small">${S.allRuns.some((r) => S.perf[r.id]) ? "No efforts yet." : "Loading…"}</p>`}</section>`;
+  h += `<section class="card"><h3>Best since starting <span class="goal-name">${esc(GOAL.name)}</span></h3>${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Distance</th><th class="r">Time</th><th class="r">Pace</th><th class="r">Run</th></tr></thead><tbody>${rows.map((x) => `<tr data-open="${esc(x.r.date)}" style="cursor:pointer"><td>${esc(x.lab)}</td><td class="r"><strong>${fmtT(x.s)}</strong></td><td class="r">${fmtP(x.s / (x.m / 1000))}</td><td class="r">${esc(fdate(x.r.date, { day: "numeric", month: "short" }))}</td></tr>`).join("")}${longest ? `<tr data-open="${esc(longest.date)}" style="cursor:pointer"><td>Longest run</td><td class="r"><strong>${longest.km.toFixed(2)} km</strong></td><td class="r">${fmtP(longest.pace)}</td><td class="r">${esc(fdate(longest.date, { day: "numeric", month: "short" }))}</td></tr>` : ""}</tbody></table></div>` : `<p class="muted small">${S.allRuns.some((r) => S.perf[r.id]) ? "No efforts yet." : "Loading…"}</p>`}</section>`;
   return h;
 }
 
@@ -1529,7 +1522,7 @@ function runDetail(r, s) {
 
 function renderHeader() {
   const left = daysBetween(today(), RACE);
-  $("#countdown").textContent = left >= 0 ? `${left} day${left === 1 ? "" : "s"} to go` : "Race done";
+
   for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-current", b.dataset.view === S.view ? "page" : "false");
 }
 let lastView = null;
