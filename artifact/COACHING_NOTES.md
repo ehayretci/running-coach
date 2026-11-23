@@ -23,6 +23,9 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 - **He got a side stitch after eating** (6 Nov). Eat 3 h or more before quality sessions.
 - **After a big dinner, swap in an easy day** (5 Nov). Swapping easy and hard days works well for him.
 - **Form:** cadence stays flat (162–173 spm) as pace rises, so speed comes from longer steps and he overstrides at 5K pace. Height 172 cm. Aim for about 175–180 spm with about 1.40 m steps at 4:00/km.
+- **Goal pace is landing:** 6 × 800 m on 17 Nov at 3:51–3:59/km, last rep fastest; "4:00 felt like 4:20 two weeks ago".
+- **Easy-run HR runs ~10 bpm high in the 1–3 days after a hard session** (169 and 168 bpm on 18 and 20 Nov, calves tired). Easy runs go by HR, not pace.
+- **Football on Sunday → next hard run no earlier than Wednesday** (72 h).
 - **Shoes:** Cloudmonsters hurt his soles at easy pace (15 Nov). Easy and recovery runs go in Vomeros; Cloudmonsters only for tempo or faster.
 - **Cadence improving:** 178 spm on the easy 8 km on 15 Nov (was 162–173). Keep cueing it.
 - **Tempo felt great when fresh** (10 Nov: "never had any aching"). He responds well to threshold work.

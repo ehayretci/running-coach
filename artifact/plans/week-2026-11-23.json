@@ -1,0 +1,258 @@
+{
+ "weekStart": "2026-11-23",
+ "notes": "Mon and Fri rest, easy Sat, football Sun. Last week: 800s at 3:51–3:59 felt easy (\"4:00 felt like 4:20 two weeks ago\"). Easy-run HR ran high after hard days (169 Wed, 168 Fri) and calves were tired Friday. Football Sun → next hard run Wednesday (72 h).",
+ "summary": "Week 4 of 6. Goal-pace 1 km reps Wednesday, football Sunday. 25.8 km running + ≈5 km football.",
+ "sessions": [
+  {
+   "id": "w4-mon",
+   "date": "2026-11-23",
+   "type": "rest",
+   "title": "Rest",
+   "distanceKm": 0,
+   "details": "Rest after football.",
+   "shoe": "none",
+   "tips": [
+    "10 min of mobility: calves, hips, hamstrings."
+   ],
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "why": ""
+  },
+  {
+   "id": "w4-tue",
+   "date": "2026-11-24",
+   "type": "easy",
+   "title": "Easy run + strides",
+   "distanceKm": 5.0,
+   "details": "4.4 km easy, then 4 × 20 s strides with 60 s walk-back · 10 min stretching: calves, hamstrings, quads, hips.",
+   "shoe": "vomero",
+   "tips": [
+    "Run by HR: under 158, even if that means 6:00/km.",
+    "Strides at the end, relaxed."
+   ],
+   "segments": [
+    {
+     "label": "Easy",
+     "km": 4.4,
+     "pace": [
+      340,
+      365
+     ]
+    },
+    {
+     "kind": "strides",
+     "label": "Stride",
+     "reps": 4,
+     "work": {
+      "sec": 20,
+      "pace": [
+       205,
+       220
+      ]
+     },
+     "rest": {
+      "sec": 60,
+      "pace": [
+       720,
+       720
+      ],
+      "label": "Walk back"
+     },
+     "dropLastRest": true
+    }
+   ],
+   "paceMin": 340,
+   "paceMax": 365,
+   "powerMin": 255,
+   "powerMax": 275,
+   "hrMin": 135,
+   "hrMax": 158,
+   "why": ""
+  },
+  {
+   "id": "w4-wed",
+   "date": "2026-11-25",
+   "type": "goalpace",
+   "title": "Goal pace: 5 × 1 km",
+   "distanceKm": 10.8,
+   "details": "2 km warm-up + 4 × 20 s strides · 5 × 1 km @ 3:58–4:02/km, 400 m easy jog · 1.5 km cool-down · 10 min stretching: calves, hamstrings, quads, hips.",
+   "shoe": "vaporfly",
+   "tips": [
+    "Rep 1 at 4:00, not faster.",
+    "Jog every recovery.",
+    "Sore calves after the warm-up? Run 5 km easy instead."
+   ],
+   "segments": [
+    {
+     "label": "Warm-up",
+     "km": 2,
+     "pace": [
+      330,
+      360
+     ]
+    },
+    {
+     "kind": "strides",
+     "label": "Stride",
+     "reps": 4,
+     "work": {
+      "sec": 20,
+      "pace": [
+       205,
+       220
+      ]
+     },
+     "rest": {
+      "sec": 60,
+      "pace": [
+       720,
+       720
+      ],
+      "label": "Walk back"
+     }
+    },
+    {
+     "kind": "reps",
+     "label": "1 km rep",
+     "reps": 5,
+     "work": {
+      "km": 1.0,
+      "pace": [
+       238,
+       242
+      ]
+     },
+     "rest": {
+      "km": 0.4,
+      "pace": [
+       380,
+       420
+      ],
+      "label": "Easy jog"
+     },
+     "dropLastRest": true
+    },
+    {
+     "label": "Cool-down",
+     "km": 1.5,
+     "pace": [
+      330,
+      370
+     ]
+    }
+   ],
+   "paceMin": 238,
+   "paceMax": 242,
+   "powerMin": 390,
+   "powerMax": 410,
+   "hrMin": 184,
+   "hrMax": 198,
+   "why": ""
+  },
+  {
+   "id": "w4-thu",
+   "date": "2026-11-26",
+   "type": "recovery",
+   "title": "Recovery run",
+   "distanceKm": 5,
+   "details": "5 km very easy · 10 min stretching: calves, hamstrings, quads, hips.",
+   "shoe": "vomero",
+   "tips": [
+    "HR under 150, whatever the pace."
+   ],
+   "segments": [
+    {
+     "label": "Recovery",
+     "km": 5,
+     "pace": [
+      350,
+      380
+     ]
+    }
+   ],
+   "paceMin": 350,
+   "paceMax": 380,
+   "powerMin": 240,
+   "powerMax": 260,
+   "hrMin": 130,
+   "hrMax": 150,
+   "why": ""
+  },
+  {
+   "id": "w4-fri",
+   "date": "2026-11-27",
+   "type": "rest",
+   "title": "Rest",
+   "distanceKm": 0,
+   "details": "Rest day.",
+   "shoe": "none",
+   "tips": [
+    "10 min of mobility: calves, hips, hamstrings."
+   ],
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 0,
+   "hrMax": 0,
+   "why": ""
+  },
+  {
+   "id": "w4-sat",
+   "date": "2026-11-28",
+   "type": "easy",
+   "title": "Easy run",
+   "distanceKm": 5,
+   "details": "5 km easy · 10 min stretching: calves, hamstrings, quads, hips.",
+   "shoe": "vomero",
+   "tips": [
+    "HR under 158.",
+    "Hold ~178 spm."
+   ],
+   "segments": [
+    {
+     "label": "Easy",
+     "km": 5,
+     "pace": [
+      340,
+      365
+     ]
+    }
+   ],
+   "paceMin": 340,
+   "paceMax": 365,
+   "powerMin": 255,
+   "powerMax": 275,
+   "hrMin": 135,
+   "hrMax": 158,
+   "why": ""
+  },
+  {
+   "id": "w4-sun",
+   "date": "2026-11-29",
+   "type": "football",
+   "title": "6-a-side football (≈5 km)",
+   "distanceKm": 5,
+   "details": "Match play. This week's second hard session: no extra running · 10 min stretching after.",
+   "shoe": "none",
+   "tips": [
+    "Warm up 10 min: jog, leg swings, short sprints."
+   ],
+   "segments": [],
+   "paceMin": 0,
+   "paceMax": 0,
+   "powerMin": 0,
+   "powerMax": 0,
+   "hrMin": 170,
+   "hrMax": 195,
+   "why": ""
+  }
+ ],
+ "generatedAt": 1795400000000
+}
