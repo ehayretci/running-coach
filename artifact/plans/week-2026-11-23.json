@@ -252,7 +252,8 @@
      "pace": [
       246,
       248
-     ]
+     ],
+     "kind": "race"
     },
     {
      "label": "Km 2–4",
@@ -260,7 +261,8 @@
      "pace": [
       242,
       246
-     ]
+     ],
+     "kind": "race"
     },
     {
      "label": "Last km",
@@ -268,7 +270,8 @@
      "pace": [
       230,
       242
-     ]
+     ],
+     "kind": "race"
     },
     {
      "label": "Cool-down",
