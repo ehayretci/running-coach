@@ -34,6 +34,7 @@ These rules come from Erim's first two weeks of training (2–13 Nov 2026). They
 ## Format preferences
 - Only strides and walks are written in seconds. Reps, tempo blocks and jogs are written in distance.
 - **No run shorter than 5 km.** 5 km is Erim's shortest route; recovery runs are 5 km too (Erim, 20 Nov).
+- Read db `notes/<date>` (notes on missed or upcoming sessions) before every weekly plan.
 - Count football as ≈5 km in the plan (Erim, 16 Nov).
 - End every run's details (football too) with 10 min stretching: calves, hamstrings, quads, hips (Erim, 16 Nov).
 - Planned km include warm-up, strides, recoveries and cool-down.

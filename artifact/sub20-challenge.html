@@ -373,7 +373,7 @@ const S = {
   store: null, storeErr: null,
   sample: null, sampleErr: null,
   busy: null, // {kind, ctl}
-  goalEdit: false, goalErr: null, goalDraft: {}, goalReady: false, streams: {}, streamsReady: false, streamErr: null, weather: {},
+  goalEdit: false, goalErr: null, goalDraft: {}, goalReady: false, streams: {}, notes: {}, streamsReady: false, streamErr: null, weather: {},
   drawer: null, // {date} or {runId}
 };
 let mcp = null, db = null;
@@ -419,6 +419,10 @@ async function initStore() {
     const l = {};
     for (const doc of snap.docs) { const b = doc.data(); if (b) l[doc.id] = b; }
     S.logs = l; if (!snap.metadata.fromCache) S.logsReady = true; applyLogs(); render();
+  }, onErr);
+  db.collection("notes").onSnapshot((snap) => {
+    const n = {}; for (const doc of snap.docs) { const b = doc.data(); if (b) n[doc.id] = b; }
+    S.notes = n; render();
   }, onErr);
   db.collection("streams").onSnapshot((snap) => {
     for (const doc of snap.docs) { const b = doc.data(); if (b && b.v) { S.streams[doc.id] = b; mergeStream(doc.id); } }
@@ -880,6 +884,8 @@ function context(weekStart, asOf = today()) {
     L.push(line);
   }
   if (!recent.length) L.push("- none");
+  const notes = Object.entries(S.notes).filter(([d]) => d >= addDays(asOf, -35)).sort();
+  if (notes.length) L.push("ATHLETE NOTES ON PLANNED SESSIONS (missed or ahead of time):\n" + notes.map(([d, n]) => `- ${d}${n.missed ? " (missed)" : ""}: "${String(n.comment).slice(0, 300)}"`).join("\n"));
   L.push("WEEKLY KM (most recent first): " + [1, 2, 3, 4].map((k) => { const w = addDays(weekStart, -7 * k); return `${w}: ${weekKm(w).toFixed(1)}`; }).join(", "));
   const prev = S.weeks[addDays(weekStart, -7)];
   if (prev) {
@@ -1472,8 +1478,24 @@ function renderDrawer() {
     h += `<section class="card"><p>Race day: ${esc(GOAL_DIST)} in ${fmtT(GOAL_S)}, about ${fmtP(GOAL_PACE)}.</p></section>`;
   }
   for (const r of runs) h += runDetail(r, s);
-  if (!runs.length && s && s.type !== "rest" && d < today()) h += `<div class="banner bad"><span class="dot"></span><div>No run recorded on Garmin for this day.</div></div>`;
+  if (!runs.length && s && s.type !== "rest") h += noteCard(d);
   return h;
+}
+/** Notes on sessions without a run: missed (past) or ahead of time (today/future). Stored in notes/<date>. */
+function noteCard(d) {
+  const key = "n-" + d, past = d < today(), saved = S.notes[d];
+  const val = S.logDrafts[key] ?? saved?.comment ?? "";
+  return `<section class="card${past && !saved ? " pending" : ""}">
+    <div class="prof-head"><span class="eyebrow">${past ? "Missed session" : "Note for this session"}</span>${saved ? `<span class="small muted">Saved ${esc(new Date(saved.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" }))}</span>` : ""}</div>
+    <label class="small" for="${key}"><strong>${past ? "What happened?" : "Anything the coach should know?"}</strong></label>
+    <textarea id="${key}" data-log="${key}" rows="3">${esc(val)}</textarea>
+    <div><button class="btn primary" data-act="save-note" data-date="${esc(d)}">Save note</button></div></section>`;
+}
+async function saveNote(d) {
+  const comment = (S.logDrafts["n-" + d] ?? S.notes[d]?.comment ?? "").trim();
+  const entry = { comment, at: Date.now(), missed: d < today() };
+  S.notes[d] = entry; delete S.logDrafts["n-" + d]; render();
+  if (db) { try { await db.collection("notes").doc(d).set(entry); } catch (e) { S.storeErr = "Couldn’t save the note (" + (e?.code || "error") + ")."; render(); } }
 }
 function runDetail(r, s) {
   if (mcp && !S.streams[r.id] && !streamBusy.has(r.id)) queueMicrotask(() => loadStream(r));
@@ -1555,6 +1577,7 @@ document.addEventListener("click", (e) => {
   if (a === "close") { S.drawer = null; render(); }
   else if (a === "stop") { S.busy?.ctl?.abort(); }
   else if (a === "dismiss-sample") { S.sampleErr = null; render(); }
+  else if (a === "save-note") { saveNote(act.dataset.date); }
   else if (a === "edit-goal") { S.goalEdit = !S.goalEdit; S.goalErr = null; S.goalDraft = {}; render(); }
   else if (a === "save-goal") { saveGoal(); }
   else if (a === "reload-strava") { if (mcp) loadGarmin(true); }

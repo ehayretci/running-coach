@@ -64,3 +64,4 @@ Requests: (a) route map + per-second data from the raw FIT file; (b) new first t
 - Streams coded: fetchStream/summariseStream/loadStream(s), db streams/<id>, routeMap, paceHrChart, HR drift, weather. Mock-tested (no errors). Publishing v19 with manifest + get_activity_fit_messages, get_activity_weather.
 - Published v19 (Garmin 8 tools). coach/goal created (v1, Sub 20 5K). Phase 2 complete; live check of watch-file size pending Erim opening the page.
 - 20 Nov v21: Week is default tab; header brand/countdown removed (header hidden on mobile); Records hero removed, 'All-time', 'Best since starting <goal name>' in accent; streams fetched in 800-record pages (retry 300) — long runs (>~38 min) had failed with 5000-record pages. 10 runs were missing streams.
+- 27 Nov v23: notes on sessions without a run (missed/upcoming) → db notes/<date>; shown in day drawer; sent to coach context.
